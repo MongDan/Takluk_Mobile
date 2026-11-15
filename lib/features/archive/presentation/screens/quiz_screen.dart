@@ -4,10 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../../../core/theme/app_theme.dart';
-import '../../../../core/domain/mock_data.dart';
 import '../../../../core/domain/models/archive_question_model.dart';
+import '../../../../core/network/api_exception.dart';
+import '../../../../core/widgets/empty_state.dart';
 import '../../../../core/widgets/push_page_header.dart';
 import '../../../../core/widgets/takluk_button.dart';
+import '../../../../core/widgets/takluk_toast.dart';
+import '../../data/archive_repository.dart';
 
 class QuizScreen extends ConsumerStatefulWidget {
   final String courseId;
@@ -19,33 +22,83 @@ class QuizScreen extends ConsumerStatefulWidget {
 }
 
 class _QuizScreenState extends ConsumerState<QuizScreen> {
-  late List<ArchiveQuestionModel> _questions;
+  List<ArchiveQuestionModel> _questions = [];
+  List<ArchiveQuestionModel> _originalQuestions = [];
   int _currentIndex = 0;
   String? _selectedKey;
   bool _isAnswered = false;
+  bool _isEvaluating = false;
+  bool _isLoading = true;
+  String? _error;
   int _score = 0;
   bool _isFinished = false;
 
   @override
   void initState() {
     super.initState();
-    _questions = MockData.archiveQuestions
-        .where((q) => q.courseId == widget.courseId)
-        .toList();
-    if (_questions.isEmpty) {
-      _questions = MockData.archiveQuestions;
+    _loadQuestions();
+  }
+
+  Future<void> _loadQuestions() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final questions = await ref
+          .read(archiveRepositoryProvider)
+          .getQuestions(courseId: widget.courseId);
+      if (!mounted) return;
+      setState(() {
+        _questions = questions;
+        _originalQuestions = List.of(questions);
+        _isLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _error = error.toString();
+      });
     }
   }
 
-  void _selectOption(String key) {
-    if (_isAnswered) return;
+  Future<void> _selectOption(String key) async {
+    if (_isAnswered || _isEvaluating) return;
+
     setState(() {
       _selectedKey = key;
-      _isAnswered = true;
-      if (key == _questions[_currentIndex].correctKey) {
-        _score++;
-      }
+      _isEvaluating = true;
     });
+
+    try {
+      final evaluation = await ref.read(archiveRepositoryProvider).evaluate(
+            questionId: _questions[_currentIndex].id,
+            selectedKey: key,
+          );
+      if (!mounted) return;
+      setState(() {
+        _questions[_currentIndex] =
+            _questions[_currentIndex].withEvaluation(evaluation);
+        if (evaluation.isCorrect) _score++;
+        _isAnswered = true;
+        _isEvaluating = false;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isEvaluating = false;
+        _selectedKey = null;
+      });
+      TaklukToast.show(context, error.message, isError: true);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isEvaluating = false;
+        _selectedKey = null;
+      });
+      TaklukToast.show(context, 'Gagal memeriksa jawaban', isError: true);
+    }
   }
 
   void _nextQuestion() {
@@ -62,6 +115,28 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: TaklukColors.bg,
+        appBar: const PushPageHeader(title: 'Latihan Soal'),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_error != null || _questions.isEmpty) {
+      return Scaffold(
+        backgroundColor: TaklukColors.bg,
+        appBar: const PushPageHeader(title: 'Latihan Soal'),
+        body: EmptyState(
+          icon: LucideIcons.fileQuestion,
+          title: _error != null ? 'Gagal Memuat Soal' : 'Belum Ada Soal',
+          subtitle: _error ?? 'Bank soal untuk mata kuliah ini belum tersedia.',
+          actionLabel: _error != null ? 'Coba Lagi' : null,
+          onAction: _error != null ? _loadQuestions : null,
+        ),
+      );
+    }
+
     if (_isFinished) {
       return Scaffold(
         backgroundColor: TaklukColors.bg,
@@ -80,7 +155,8 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                     shape: BoxShape.circle,
                   ),
                   child: const Center(
-                    child: Text('🎉', style: TextStyle(fontSize: 48)),
+                    child: Icon(LucideIcons.partyPopper,
+                        size: 44, color: TaklukColors.accent),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -113,6 +189,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                       _isAnswered = false;
                       _score = 0;
                       _isFinished = false;
+                      _questions = List.of(_originalQuestions);
                     });
                   },
                 ),
@@ -303,7 +380,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                     ),
                     const SizedBox(height: 10),
                     MarkdownBody(
-                      data: q.explanationMd,
+                      data: q.explanationMd ?? '',
                       styleSheet: MarkdownStyleSheet(
                         p: const TextStyle(
                           fontFamily: 'Poppins',
@@ -350,7 +427,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
               const SizedBox(height: 20),
               TaklukButton(
                 label: _currentIndex < _questions.length - 1 ? 'Soal Berikutnya →' : 'Selesai Latihan',
-                onPressed: _nextQuestion,
+                onPressed: _isEvaluating ? null : _nextQuestion,
               ),
             ],
           ],

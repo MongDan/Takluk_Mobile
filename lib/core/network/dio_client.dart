@@ -1,48 +1,67 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../config/app_config.dart';
 import '../constants/app_constants.dart';
 
 final secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
   return const FlutterSecureStorage();
 });
 
+/// Dio client tunggal untuk seluruh aplikasi.
+///
+/// `baseUrl` diambil dari [AppConfig.apiBaseUrl] sehingga pergantian alamat
+/// backend cukup dilakukan di satu tempat.
 final dioClientProvider = Provider<Dio>((ref) {
-  final dio = Dio(BaseOptions(
-    baseUrl: AppConstants.baseUrl,
-    connectTimeout: AppConstants.apiTimeout,
-    receiveTimeout: AppConstants.apiTimeout,
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    },
-  ));
+  final dio = Dio(
+    BaseOptions(
+      baseUrl: AppConfig.apiBaseUrl,
+      connectTimeout: AppConfig.apiTimeout,
+      receiveTimeout: AppConfig.apiTimeout,
+      sendTimeout: AppConfig.apiTimeout,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+    ),
+  );
 
   dio.interceptors.add(AuthInterceptor(ref));
-  dio.interceptors.add(LogInterceptor(
-    requestBody: true,
-    responseBody: true,
-    logPrint: (obj) => print('DIO: $obj'),
-  ));
+
+  if (kDebugMode) {
+    dio.interceptors.add(
+      LogInterceptor(
+        requestBody: true,
+        responseBody: true,
+        logPrint: (obj) => debugPrint('DIO: $obj'),
+      ),
+    );
+  }
 
   return dio;
 });
 
+/// Menyisipkan `Authorization: Bearer <JWT>` dan `X-Device-ID` pada setiap
+/// request yang membutuhkannya (Single Device Binding).
 class AuthInterceptor extends Interceptor {
   final Ref _ref;
 
   AuthInterceptor(this._ref);
 
   @override
-  void onRequest(RequestOptions options, RequestInterceptorHandler handler) async {
+  Future<void> onRequest(
+    RequestOptions options,
+    RequestInterceptorHandler handler,
+  ) async {
     final storage = _ref.read(secureStorageProvider);
-    final token = await storage.read(key: 'jwt_token');
-    final deviceId = await storage.read(key: 'device_id');
+    final token = await storage.read(key: StorageKeys.jwtToken);
+    final deviceId = await storage.read(key: StorageKeys.deviceId);
 
-    if (token != null) {
+    if (token != null && token.isNotEmpty) {
       options.headers['Authorization'] = 'Bearer $token';
     }
-    if (deviceId != null) {
+    if (deviceId != null && deviceId.isNotEmpty) {
       options.headers['X-Device-ID'] = deviceId;
     }
 
@@ -50,40 +69,23 @@ class AuthInterceptor extends Interceptor {
   }
 
   @override
-  void onError(DioException err, ErrorInterceptorHandler handler) async {
-    if (err.response?.statusCode == 403) {
-      final errorCode = err.response?.data?['error_code'];
-      if (errorCode == 'DEVICE_MISMATCH') {
-        // Auto-logout: clear credentials
-        final storage = _ref.read(secureStorageProvider);
-        await storage.deleteAll();
-        // The auth state listener in the app will handle navigation
-      }
+  Future<void> onError(
+    DioException err,
+    ErrorInterceptorHandler handler,
+  ) async {
+    final status = err.response?.statusCode;
+    final data = err.response?.data;
+    final errorCode = data is Map ? data['error_code']?.toString() : null;
+
+    // Akun dipakai di perangkat lain / dinonaktifkan: bersihkan sesi lokal.
+    if (status == 403 &&
+        (errorCode == 'DEVICE_MISMATCH' || errorCode == 'ACCOUNT_DISABLED')) {
+      final storage = _ref.read(secureStorageProvider);
+      await storage.delete(key: StorageKeys.jwtToken);
+      await storage.delete(key: StorageKeys.userJson);
     }
+
     handler.next(err);
   }
 }
 
-/// Standard API response wrapper
-class ApiResponse<T> {
-  final bool success;
-  final String message;
-  final T? data;
-  final String? errorCode;
-
-  ApiResponse({
-    required this.success,
-    required this.message,
-    this.data,
-    this.errorCode,
-  });
-
-  factory ApiResponse.fromJson(Map<String, dynamic> json, T Function(dynamic)? fromData) {
-    return ApiResponse(
-      success: json['success'] as bool,
-      message: json['message'] as String? ?? '',
-      data: json['data'] != null && fromData != null ? fromData(json['data']) : null,
-      errorCode: json['error_code'] as String?,
-    );
-  }
-}

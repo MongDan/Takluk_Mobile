@@ -5,6 +5,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/domain/models/transaction_model.dart';
+import '../../../../core/network/api_exception.dart';
 import '../../../../core/widgets/push_page_header.dart';
 import '../../../../core/widgets/takluk_button.dart';
 import '../../../../core/widgets/takluk_toast.dart';
@@ -25,21 +26,22 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   bool _isLoading = false;
 
   void _applyVoucher(String code) {
-    if (code.trim().isEmpty) return;
-    final repo = ref.read(paymentRepositoryProvider);
-    final result = repo.validateVoucher(code);
+    final clean = code.trim().toUpperCase();
+    if (clean.isEmpty) return;
 
+    // Backend memvalidasi kuota & nominal voucher saat invoice dibuat.
     setState(() {
-      if (result.isValid) {
-        _appliedVoucher = result;
-        _voucherError = null;
-        _voucherController.text = result.code;
-        TaklukToast.show(context, result.message ?? 'Voucher aktif');
-      } else {
-        _appliedVoucher = null;
-        _voucherError = result.message;
-      }
+      _appliedVoucher = VoucherModel(
+        code: clean,
+        message: 'Voucher akan divalidasi oleh server saat membuat tagihan.',
+      );
+      _voucherError = null;
+      _voucherController.text = clean;
     });
+    TaklukToast.show(
+      context,
+      'Voucher $clean akan divalidasi saat tagihan dibuat',
+    );
   }
 
   void _removeVoucher() {
@@ -59,18 +61,33 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
     setState(() => _isLoading = true);
 
-    final repo = ref.read(paymentRepositoryProvider);
-    final tx = await repo.createQrisTransaction(
-      userId: user.id,
-      voucherCode: _appliedVoucher?.code,
-      discountAmount: _appliedVoucher?.discountAmount ?? 0,
-    );
+    try {
+      final tx = await ref.read(paymentRepositoryProvider).createQris(
+            voucherCode: _appliedVoucher?.code,
+          );
 
-    ref.read(currentTransactionProvider.notifier).state = tx;
+      ref.read(currentTransactionProvider.notifier).state = tx;
+      ref.invalidate(transactionHistoryProvider);
 
-    if (mounted) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        context.push('/qris/${tx.invoiceNumber}');
+      }
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        if (error.code == 'VOUCHER_INVALID' ||
+            error.code == 'VOUCHER_QUOTA_EXCEEDED') {
+          _appliedVoucher = null;
+          _voucherError = error.message;
+        }
+      });
+      TaklukToast.show(context, error.message, isError: true);
+    } catch (_) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
-      context.push('/qris/${tx.id}');
+      TaklukToast.show(context, 'Gagal membuat tagihan QRIS', isError: true);
     }
   }
 
@@ -90,8 +107,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   @override
   Widget build(BuildContext context) {
     final basePrice = AppConstants.subscriptionPrice;
-    final discount = _appliedVoucher?.discountAmount ?? 0;
-    final finalPrice = (basePrice - discount).clamp(0, basePrice);
 
     return Scaffold(
       backgroundColor: TaklukColors.bg,
@@ -273,8 +288,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                   if (_appliedVoucher != null) ...[
                     const SizedBox(height: 10),
                     _priceRow(
-                      'Diskon Voucher (${_appliedVoucher!.code})',
-                      '-Rp${_formatRupiah(discount)}',
+                      'Voucher ${_appliedVoucher!.code}',
+                      'Divalidasi server',
                       isDiscount: true,
                     ),
                   ],
@@ -294,7 +309,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                         ),
                       ),
                       Text(
-                        'Rp${_formatRupiah(finalPrice)}',
+                        'Rp${_formatRupiah(basePrice)}',
                         style: const TextStyle(
                           fontFamily: 'Poppins',
                           fontSize: 18,

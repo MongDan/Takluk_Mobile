@@ -1,3 +1,5 @@
+import '../../network/json_utils.dart';
+
 class CourseModel {
   final String id;
   final String slug;
@@ -25,16 +27,17 @@ class CourseModel {
 
   factory CourseModel.fromJson(Map<String, dynamic> json) {
     return CourseModel(
-      id: json['id'] as String,
-      slug: json['slug'] as String,
-      title: json['title'] as String,
-      symbol: json['symbol'] as String,
-      semesterTarget: json['semester_target'] as int,
-      description: json['description'] as String?,
-      sortOrder: json['sort_order'] as int? ?? 0,
-      isPublished: json['is_published'] as bool? ?? true,
-      videoCount: json['video_count'] as int? ?? 0,
-      freeVideoCount: json['free_video_count'] as int? ?? 0,
+      id: pickString(json, ['id']),
+      slug: pickString(json, ['slug']),
+      title: pickString(json, ['title']),
+      symbol: pickString(json, ['symbol']),
+      semesterTarget: pickInt(json, ['semester_target', 'semesterTarget']),
+      description: pickStringOrNull(json, ['description']),
+      sortOrder: pickInt(json, ['sort_order', 'sortOrder']),
+      isPublished: pickBool(json, ['is_published', 'isPublished'], fallback: true),
+      videoCount: pickInt(json, ['video_count', 'videoCount']),
+      freeVideoCount: pickInt(json, ['free_video_count', 'freeVideoCount']),
     );
   }
 }
+

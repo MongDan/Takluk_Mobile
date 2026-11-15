@@ -7,6 +7,7 @@ import '../../../../core/widgets/push_page_header.dart';
 import '../../../../core/widgets/takluk_button.dart';
 import '../../../../core/widgets/takluk_toast.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../providers/profile_provider.dart';
 
 class ReferralScreen extends ConsumerWidget {
   const ReferralScreen({super.key});
@@ -14,7 +15,9 @@ class ReferralScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authProvider).user;
-    final code = user?.referralCode ?? 'AISYAH23';
+    final referralAsync = ref.watch(referralProvider);
+    final referral = referralAsync.valueOrNull;
+    final code = referral?.referralCode ?? user?.referralCode ?? '-';
 
     return Scaffold(
       backgroundColor: TaklukColors.bg,
@@ -31,7 +34,8 @@ class ReferralScreen extends ConsumerWidget {
                 shape: BoxShape.circle,
               ),
               child: const Center(
-                child: Text('🎁', style: TextStyle(fontSize: 44)),
+                child: Icon(LucideIcons.gift,
+                    size: 40, color: TaklukColors.primary),
               ),
             ),
             const SizedBox(height: 20),
@@ -125,6 +129,40 @@ class ReferralScreen extends ConsumerWidget {
                 ],
               ),
             ),
+            const SizedBox(height: 16),
+            if (referralAsync.isLoading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: CircularProgressIndicator(),
+              )
+            else if (referralAsync.hasError)
+              Text(
+                'Gagal memuat statistik referral: ${referralAsync.error}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontFamily: 'Poppins',
+                  fontSize: 11,
+                  color: TaklukColors.error,
+                ),
+              )
+            else if (referral != null)
+              Row(
+                children: [
+                  Expanded(
+                    child: _statCard(
+                      'Teman Diundang',
+                      '${referral.totalReferredUsers}',
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _statCard(
+                      'Bonus Hari',
+                      '${referral.bonusDaysEarned}',
+                    ),
+                  ),
+                ],
+              ),
             const SizedBox(height: 24),
 
             // Benefit Explanation
@@ -157,12 +195,47 @@ class ReferralScreen extends ConsumerWidget {
               label: 'Salin & Bagikan ke WhatsApp',
               icon: LucideIcons.share2,
               onPressed: () {
-                Clipboard.setData(ClipboardData(text: 'Yuk taklukkan ujian kampus bareng Takluk! Pakai kode referral saya "$code" buat dapat diskon langganan: https://takluk.id'));
+                final message = referral?.shareMessage ??
+                    'Yuk taklukkan ujian kampus bareng Takluk! Pakai kode referral saya "$code" buat dapat diskon langganan: https://takluk.id';
+                Clipboard.setData(ClipboardData(text: message));
                 TaklukToast.show(context, 'Pesan referral berhasil disalin ke clipboard');
               },
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _statCard(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      decoration: BoxDecoration(
+        color: TaklukColors.surface,
+        borderRadius: TaklukRadius.cardBR,
+        border: Border.all(color: TaklukColors.line),
+      ),
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: const TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: TaklukColors.primary,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: const TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 11,
+              color: TaklukColors.muted,
+            ),
+          ),
+        ],
       ),
     );
   }

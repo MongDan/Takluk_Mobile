@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/security/device_info_service.dart';
 import '../../../../core/widgets/push_page_header.dart';
 import '../../../../core/widgets/takluk_button.dart';
 import '../../../../core/widgets/takluk_toast.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../data/profile_repository.dart';
+import '../providers/profile_provider.dart';
 
 class DeviceManagementScreen extends ConsumerStatefulWidget {
   const DeviceManagementScreen({super.key});
@@ -18,6 +21,7 @@ class DeviceManagementScreen extends ConsumerStatefulWidget {
 class _DeviceManagementScreenState extends ConsumerState<DeviceManagementScreen> {
   String _deviceModel = 'Memuat…';
   String _deviceId = 'Memuat…';
+  bool _isResetting = false;
 
   @override
   void initState() {
@@ -37,13 +41,128 @@ class _DeviceManagementScreenState extends ConsumerState<DeviceManagementScreen>
     }
   }
 
-  void _resetDeviceBinding() {
-    TaklukToast.show(context, 'Pengikatan perangkat berhasil di-reset');
+  Future<void> _resetDeviceBinding() async {
+    final infoService = ref.read(deviceInfoServiceProvider);
+    final newDeviceId = await infoService.getDeviceId();
+
+    setState(() => _isResetting = true);
+
+    try {
+      // Langkah 1: minta OTP konfirmasi ke email mahasiswa.
+      await ref
+          .read(profileRepositoryProvider)
+          .requestDeviceResetOtp(newDeviceId: newDeviceId);
+
+      if (!mounted) return;
+      final otpCode = await _askOtpCode();
+      if (otpCode == null || otpCode.length != 6) {
+        setState(() => _isResetting = false);
+        return;
+      }
+
+      // Langkah 2: verifikasi OTP & pindahkan binding perangkat.
+      final result = await ref.read(profileRepositoryProvider).confirmDeviceReset(
+            newDeviceId: newDeviceId,
+            otpCode: otpCode,
+          );
+
+      ref.invalidate(deviceInfoProvider);
+      await ref.read(authProvider.notifier).refreshProfile();
+
+      if (!mounted) return;
+      setState(() => _isResetting = false);
+      TaklukToast.show(
+        context,
+        result.message.isNotEmpty
+            ? result.message
+            : 'Perangkat berhasil dipindahkan ke perangkat ini',
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _isResetting = false);
+      TaklukToast.show(context, error.message, isError: true);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isResetting = false);
+      TaklukToast.show(context, 'Gagal memproses pergantian perangkat', isError: true);
+    }
+  }
+
+  Future<String?> _askOtpCode() async {
+    final controller = TextEditingController();
+    final code = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: TaklukColors.surface,
+        title: const Text(
+          'Konfirmasi Ganti Perangkat',
+          style: TextStyle(
+            fontFamily: 'Poppins',
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: TaklukColors.ink,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Masukkan 6 digit OTP yang dikirim ke email akunmu.',
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 12,
+                color: TaklukColors.muted,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              style: const TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 16,
+                letterSpacing: 6,
+                color: TaklukColors.ink,
+              ),
+              decoration: const InputDecoration(counterText: ''),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              'Batal',
+              style: TextStyle(fontFamily: 'Poppins', color: TaklukColors.muted),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: const Text(
+              'Pindahkan',
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontWeight: FontWeight.w700,
+                color: TaklukColors.primary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return code;
   }
 
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authProvider).user;
+    final deviceAsync = ref.watch(deviceInfoProvider);
+    final boundDeviceId =
+        deviceAsync.valueOrNull?.activeDeviceId ?? _deviceId;
 
     return Scaffold(
       backgroundColor: TaklukColors.bg,
@@ -175,7 +294,7 @@ class _DeviceManagementScreenState extends ConsumerState<DeviceManagementScreen>
                   const SizedBox(height: 16),
                   const Divider(color: TaklukColors.line),
                   const SizedBox(height: 10),
-                  _infoRow('Device ID:', _deviceId.length > 20 ? '${_deviceId.substring(0, 20)}…' : _deviceId),
+                  _infoRow('Device ID:', boundDeviceId.length > 20 ? '${boundDeviceId.substring(0, 20)}…' : boundDeviceId),
                   const SizedBox(height: 6),
                   _infoRow('Terakhir Sinkron:', 'Hari ini (Aktif)'),
                   const SizedBox(height: 6),
@@ -189,7 +308,8 @@ class _DeviceManagementScreenState extends ConsumerState<DeviceManagementScreen>
               label: 'Pindahkan Sesi ke Perangkat Ini',
               variant: ButtonVariant.secondary,
               icon: LucideIcons.refreshCw,
-              onPressed: _resetDeviceBinding,
+              isLoading: _isResetting,
+              onPressed: _isResetting ? null : _resetDeviceBinding,
             ),
           ],
         ),

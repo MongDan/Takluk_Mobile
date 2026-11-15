@@ -1,4 +1,5 @@
 import '../../constants/enums.dart';
+import '../../network/json_utils.dart';
 
 class UserModel {
   final String id;
@@ -7,6 +8,7 @@ class UserModel {
   final String nim;
   final University university;
   final int semester;
+  final String? major;
   final String? phoneNumber;
   final UserRole role;
   final String? activeDeviceId;
@@ -24,6 +26,7 @@ class UserModel {
     required this.nim,
     required this.university,
     required this.semester,
+    this.major,
     this.phoneNumber,
     this.role = UserRole.STUDENT,
     this.activeDeviceId,
@@ -36,7 +39,8 @@ class UserModel {
   });
 
   bool get isSubscribed =>
-      subscriptionValidUntil != null && subscriptionValidUntil!.isAfter(DateTime.now());
+      subscriptionValidUntil != null &&
+      subscriptionValidUntil!.isAfter(DateTime.now());
 
   int? get daysRemaining {
     if (!isSubscribed) return null;
@@ -45,39 +49,52 @@ class UserModel {
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
-      id: json['id'] as String,
-      email: json['email'] as String,
-      fullName: json['full_name'] as String,
-      nim: json['nim'] as String,
-      university: University.fromValue(json['university'] as String),
-      semester: json['semester'] as int,
-      phoneNumber: json['phone_number'] as String?,
-      role: UserRole.values.firstWhere((e) => e.value == json['role'], orElse: () => UserRole.STUDENT),
-      activeDeviceId: json['active_device_id'] as String?,
-      deviceUpdatedAt: json['device_updated_at'] != null ? DateTime.parse(json['device_updated_at']) : null,
-      referralCode: json['referral_code'] as String,
-      referredById: json['referred_by_id'] as String?,
-      subscriptionValidUntil: json['subscription_valid_until'] != null ? DateTime.parse(json['subscription_valid_until']) : null,
-      isActive: json['is_active'] as bool? ?? true,
-      createdAt: DateTime.parse(json['created_at'] as String),
+      id: pickString(json, ['id']),
+      email: pickString(json, ['email']),
+      fullName: pickString(json, ['full_name', 'fullName'], fallback: 'Mahasiswa'),
+      nim: pickString(json, ['nim']),
+      university: University.fromValue(
+        pickString(json, ['university'], fallback: 'LAINNYA'),
+      ),
+      semester: pickInt(json, ['semester'], fallback: 1),
+      major: pickStringOrNull(json, ['major']),
+      phoneNumber: pickStringOrNull(json, ['phone_number', 'phoneNumber']),
+      role: UserRole.values.firstWhere(
+        (e) => e.value == pickString(json, ['role'], fallback: 'STUDENT'),
+        orElse: () => UserRole.STUDENT,
+      ),
+      activeDeviceId:
+          pickStringOrNull(json, ['active_device_id', 'activeDeviceId']),
+      deviceUpdatedAt:
+          pickDate(json, ['device_updated_at', 'deviceUpdatedAt']),
+      referralCode: pickString(json, ['referral_code', 'referralCode']),
+      referredById: pickStringOrNull(json, ['referred_by_id', 'referredById']),
+      subscriptionValidUntil:
+          pickDate(json, ['subscription_valid_until', 'subscriptionValidUntil']),
+      isActive: pickBool(json, ['is_active', 'isActive'], fallback: true),
+      createdAt:
+          pickDate(json, ['created_at', 'createdAt']) ?? DateTime.now(),
     );
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'email': email,
-    'full_name': fullName,
-    'nim': nim,
-    'university': university.value,
-    'semester': semester,
-    'phone_number': phoneNumber,
-    'role': role.value,
-    'active_device_id': activeDeviceId,
-    'referral_code': referralCode,
-    'subscription_valid_until': subscriptionValidUntil?.toIso8601String(),
-    'is_active': isActive,
-    'created_at': createdAt.toIso8601String(),
-  };
+        'id': id,
+        'email': email,
+        'full_name': fullName,
+        'nim': nim,
+        'university': university.value,
+        'semester': semester,
+        'major': major,
+        'phone_number': phoneNumber,
+        'role': role.value,
+        'active_device_id': activeDeviceId,
+        'device_updated_at': deviceUpdatedAt?.toIso8601String(),
+        'referral_code': referralCode,
+        'referred_by_id': referredById,
+        'subscription_valid_until': subscriptionValidUntil?.toIso8601String(),
+        'is_active': isActive,
+        'created_at': createdAt.toIso8601String(),
+      };
 
   UserModel copyWith({
     String? id,
@@ -86,6 +103,7 @@ class UserModel {
     String? nim,
     University? university,
     int? semester,
+    String? major,
     String? phoneNumber,
     UserRole? role,
     String? activeDeviceId,
@@ -103,15 +121,18 @@ class UserModel {
       nim: nim ?? this.nim,
       university: university ?? this.university,
       semester: semester ?? this.semester,
+      major: major ?? this.major,
       phoneNumber: phoneNumber ?? this.phoneNumber,
       role: role ?? this.role,
       activeDeviceId: activeDeviceId ?? this.activeDeviceId,
       deviceUpdatedAt: deviceUpdatedAt ?? this.deviceUpdatedAt,
       referralCode: referralCode ?? this.referralCode,
       referredById: referredById ?? this.referredById,
-      subscriptionValidUntil: subscriptionValidUntil ?? this.subscriptionValidUntil,
+      subscriptionValidUntil:
+          subscriptionValidUntil ?? this.subscriptionValidUntil,
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
     );
   }
 }
+

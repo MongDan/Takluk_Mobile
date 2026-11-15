@@ -1,3 +1,6 @@
+import '../../constants/enums.dart';
+import '../../network/json_utils.dart';
+
 class WatchHistoryModel {
   final String id;
   final String userId;
@@ -12,6 +15,9 @@ class WatchHistoryModel {
   final String? courseSymbol;
   final int? videoDurationSeconds;
   final String? courseName;
+  final bool isFree;
+  final VideoCategory? category;
+  final University? universityTag;
 
   const WatchHistoryModel({
     required this.id,
@@ -26,27 +32,90 @@ class WatchHistoryModel {
     this.courseSymbol,
     this.videoDurationSeconds,
     this.courseName,
+    this.isFree = false,
+    this.category,
+    this.universityTag,
   });
 
   double get progress {
     if (videoDurationSeconds == null || videoDurationSeconds == 0) return 0;
-    return lastPositionSec / videoDurationSeconds!;
+    return (lastPositionSec / videoDurationSeconds!).clamp(0, 1);
   }
 
   factory WatchHistoryModel.fromJson(Map<String, dynamic> json) {
     return WatchHistoryModel(
-      id: json['id'] as String,
-      userId: json['user_id'] as String,
-      videoId: json['video_id'] as String,
-      lastPositionSec: json['last_position_sec'] as int? ?? 0,
-      totalWatchedSec: json['total_watched_sec'] as int? ?? 0,
-      isCompleted: json['is_completed'] as bool? ?? false,
-      isBookmarked: json['is_bookmarked'] as bool? ?? false,
-      lastWatchedAt: DateTime.parse(json['last_watched_at'] as String),
-      videoTitle: json['video_title'] as String?,
-      courseSymbol: json['course_symbol'] as String?,
-      videoDurationSeconds: json['video_duration_seconds'] as int?,
-      courseName: json['course_name'] as String?,
+      id: pickString(json, ['id']),
+      userId: pickString(json, ['user_id', 'userId']),
+      videoId: pickString(json, ['video_id', 'videoId']),
+      lastPositionSec: pickInt(json, ['last_position_sec', 'lastPositionSec']),
+      totalWatchedSec: pickInt(json, ['total_watched_sec', 'totalWatchedSec']),
+      isCompleted: pickBool(json, ['is_completed', 'isCompleted']),
+      isBookmarked: pickBool(json, ['is_bookmarked', 'isBookmarked']),
+      lastWatchedAt:
+          pickDate(json, ['last_watched_at', 'lastWatchedAt']) ?? DateTime.now(),
+      videoTitle: pickStringOrNull(json, ['video_title', 'videoTitle']),
+      courseSymbol: pickStringOrNull(json, ['course_symbol', 'courseSymbol']),
+      videoDurationSeconds: pickIntOrNull(
+        json,
+        ['video_duration_seconds', 'videoDurationSeconds'],
+      ),
+      courseName: pickStringOrNull(json, ['course_name', 'courseName']),
+      isFree: pickBool(json, ['is_free', 'isFree']),
+      category: pickStringOrNull(json, ['category']) != null
+          ? VideoCategory.values.firstWhere(
+              (e) => e.value == pickString(json, ['category']),
+              orElse: () => VideoCategory.MATERI,
+            )
+          : null,
+      universityTag:
+          pickStringOrNull(json, ['university_tag', 'universityTag']) != null
+              ? University.fromValue(
+                  pickString(json, ['university_tag', 'universityTag']),
+                )
+              : null,
+    );
+  }
+
+  /// Memetakan baris `GET /api/progress/resume` atau `/bookmarks`.
+  /// Backend mengirim data video (bukan data watch_history mentah).
+  factory WatchHistoryModel.fromProgressVideoJson(
+    Map<String, dynamic> json, {
+    required bool isBookmarked,
+  }) {
+    final videoId = pickString(json, ['video_id', 'videoId', 'id']);
+    return WatchHistoryModel(
+      id: videoId,
+      userId: pickString(json, ['user_id', 'userId']),
+      videoId: videoId,
+      lastPositionSec: pickInt(json, ['last_position_sec', 'lastPositionSec']),
+      totalWatchedSec: pickInt(json, ['total_watched_sec', 'totalWatchedSec']),
+      isCompleted: pickBool(json, ['is_completed', 'isCompleted']),
+      isBookmarked: isBookmarked,
+      lastWatchedAt:
+          pickDate(json, ['last_watched_at', 'lastWatchedAt']) ?? DateTime.now(),
+      videoTitle: pickStringOrNull(json, ['title', 'video_title', 'videoTitle']),
+      courseSymbol: pickStringOrNull(json, ['course_symbol', 'courseSymbol']),
+      videoDurationSeconds: pickIntOrNull(
+        json,
+        ['duration_seconds', 'durationSeconds', 'videoDurationSeconds'],
+      ),
+      courseName: pickStringOrNull(
+        json,
+        ['course_title', 'courseTitle', 'course_name', 'courseName'],
+      ),
+      isFree: pickBool(json, ['is_free', 'isFree']),
+      category: pickStringOrNull(json, ['category']) != null
+          ? VideoCategory.values.firstWhere(
+              (e) => e.value == pickString(json, ['category']),
+              orElse: () => VideoCategory.MATERI,
+            )
+          : null,
+      universityTag:
+          pickStringOrNull(json, ['university_tag', 'universityTag']) != null
+              ? University.fromValue(
+                  pickString(json, ['university_tag', 'universityTag']),
+                )
+              : null,
     );
   }
 
@@ -70,6 +139,10 @@ class WatchHistoryModel {
       courseSymbol: courseSymbol,
       videoDurationSeconds: videoDurationSeconds,
       courseName: courseName,
+      isFree: isFree,
+      category: category,
+      universityTag: universityTag,
     );
   }
 }
+

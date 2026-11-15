@@ -4,4 +4,9 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- Backend development berjalan di http://10.0.2.2:3000 (emulator).
+         Aturan ini hanya untuk build debug; production memakai HTTPS. -->
+    <application android:usesCleartextTraffic="true" />
 </manifest>
+
