@@ -1,92 +1,68 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/constants/app_constants.dart';
-import '../../../core/constants/enums.dart';
+import '../../../core/domain/models/payment_status_model.dart';
 import '../../../core/domain/models/transaction_model.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/network/api_endpoints.dart';
+import '../../../core/network/json_utils.dart';
 
-final paymentRepositoryProvider = Provider<PaymentRepository>((ref) => PaymentRepository());
+final paymentRepositoryProvider = Provider<PaymentRepository>((ref) {
+  return PaymentRepository(ref.watch(apiClientProvider));
+});
 
 class PaymentRepository {
-  final List<TransactionModel> _transactions = [];
+  final ApiClient _api;
 
-  List<TransactionModel> get transactions => List.unmodifiable(_transactions);
+  PaymentRepository(this._api);
 
-  VoucherModel validateVoucher(String code) {
-    final clean = code.toUpperCase().trim();
-    if (AppConstants.vouchers.containsKey(clean)) {
-      final discount = AppConstants.vouchers[clean]!;
-      return VoucherModel(
-        code: clean,
-        discountAmount: discount,
-        isValid: true,
-        message: 'Voucher berhasil digunakan! Hemat Rp${_formatRupiah(discount)}',
-      );
-    }
-    return const VoucherModel(
-      code: '',
-      discountAmount: 0,
-      isValid: false,
-      message: 'Kode voucher tidak valid atau sudah habis',
+  /// `POST /api/payments/qris` — buat invoice & Dynamic QRIS Rp25.000.
+  /// Voucher divalidasi sepenuhnya oleh backend.
+  Future<TransactionModel> createQris({String? voucherCode}) async {
+    final data = await _api.post(
+      ApiEndpoints.paymentsQris,
+      data: {
+        if (voucherCode != null && voucherCode.trim().isNotEmpty)
+          'voucher_code': voucherCode.trim().toUpperCase(),
+      },
     );
+    return TransactionModel.fromJson(asJsonMap(data));
   }
 
-  Future<TransactionModel> createQrisTransaction({
-    required String userId,
-    String? voucherCode,
-    required int discountAmount,
+  /// `GET /api/payments/history`
+  Future<List<TransactionModel>> getHistory() async {
+    final data = await _api.get(ApiEndpoints.paymentsHistory);
+    if (data is! List) return const [];
+    return data
+        .whereType<Map>()
+        .map((row) => TransactionModel.fromJson(asJsonMap(row)))
+        .toList();
+  }
+
+  /// `GET /api/payments/:invoice_number/status` — polling ringan.
+  Future<PaymentStatusModel> checkStatus(String invoiceNumber) async {
+    final data = await _api.get(ApiEndpoints.paymentStatus(invoiceNumber));
+    return PaymentStatusModel.fromJson(asJsonMap(data));
+  }
+
+  /// Simulasi pelunasan untuk mode development.
+  ///
+  /// Memanggil webhook Midtrans dengan `signature_key = mock_signature_test`
+  /// yang hanya diterima backend saat `NODE_ENV=development`.
+  Future<void> simulatePaymentSuccess({
+    required String invoiceNumber,
+    required int grossAmount,
   }) async {
-    await Future.delayed(const Duration(milliseconds: 600));
-
-    final base = AppConstants.subscriptionPrice;
-    final finalAmount = (base - discountAmount).clamp(0, base);
-    final txId = 'tx-${DateTime.now().millisecondsSinceEpoch}';
-    final invoice = 'INV-TKL-${DateTime.now().year}${DateTime.now().month.toString().padLeft(2, '0')}${DateTime.now().day.toString().padLeft(2, '0')}-${DateTime.now().millisecond}';
-
-    final tx = TransactionModel(
-      id: txId,
-      invoiceNumber: invoice,
-      userId: userId,
-      voucherCode: voucherCode,
-      baseAmount: base,
-      discountAmount: discountAmount,
-      finalAmount: finalAmount,
-      paymentStatus: PaymentStatus.PENDING,
-      qrisString: '00020101021226590014ID.CO.QRIS.WWW0118936000020112345678020812345678520458125303360540${finalAmount}5802ID5913TAKLUK EDTECH6009PEKANBARU61052829362190115${invoice}6304ABCD',
-      expiresAt: DateTime.now().add(const Duration(minutes: AppConstants.qrisTimerMinutes)),
-      createdAt: DateTime.now(),
-    );
-
-    _transactions.insert(0, tx);
-    return tx;
-  }
-
-  Future<bool> simulatePaymentSuccess(String transactionId) async {
-    await Future.delayed(const Duration(milliseconds: 800));
-    final idx = _transactions.indexWhere((t) => t.id == transactionId);
-    if (idx >= 0) {
-      _transactions[idx] = TransactionModel(
-        id: _transactions[idx].id,
-        invoiceNumber: _transactions[idx].invoiceNumber,
-        userId: _transactions[idx].userId,
-        voucherCode: _transactions[idx].voucherCode,
-        baseAmount: _transactions[idx].baseAmount,
-        discountAmount: _transactions[idx].discountAmount,
-        finalAmount: _transactions[idx].finalAmount,
-        paymentStatus: PaymentStatus.SUCCESS,
-        qrisString: _transactions[idx].qrisString,
-        expiresAt: _transactions[idx].expiresAt,
-        paidAt: DateTime.now(),
-        createdAt: _transactions[idx].createdAt,
-      );
-      return true;
-    }
-    return false;
-  }
-
-  String _formatRupiah(int val) {
-    return val.toString().replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]}.',
+    await _api.post(
+      ApiEndpoints.paymentsWebhook,
+      data: {
+        'order_id': invoiceNumber,
+        'status_code': '200',
+        'gross_amount': grossAmount.toString(),
+        'signature_key': 'mock_signature_test',
+        'transaction_status': 'settlement',
+        'fraud_status': 'accept',
+      },
     );
   }
 }
+
 

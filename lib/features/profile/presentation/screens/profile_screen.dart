@@ -206,11 +206,17 @@ class ProfileScreen extends ConsumerWidget {
                     ),
                     _menuItem(
                       icon: LucideIcons.refreshCcw,
-                      title: 'Reset Data Mode Demo',
-                      subtitle: 'Kembalikan status awal akun demo Aisyah',
-                      onTap: () {
-                        ref.read(authProvider.notifier).resetDemoData();
-                        TaklukToast.show(context, 'Data demo berhasil di-reset');
+                      title: 'Muat Ulang Profil',
+                      subtitle: 'Sinkronkan status langganan & data akun dari server',
+                      onTap: () async {
+                        await ref.read(authProvider.notifier).refreshProfile();
+                        if (!context.mounted) return;
+                        final error = ref.read(authProvider).errorMessage;
+                        TaklukToast.show(
+                          context,
+                          error ?? 'Profil berhasil disegarkan',
+                          isError: error != null,
+                        );
                       },
                     ),
                     const SizedBox(height: 12),
@@ -306,19 +312,19 @@ class ProfileScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 12),
-            const Text(
-              '📍 Alamat Offline Hub:\nJl. HR. Soebrantas, Panam (Dekat Kampus UNRI & UIN Suska), Pekanbaru, Riau.',
-              style: TextStyle(fontFamily: 'Poppins', fontSize: 13, color: TaklukColors.ink, height: 1.5),
+            _HubInfoRow(
+              icon: LucideIcons.mapPin,
+              text: 'Alamat Offline Hub:\nJl. HR. Soebrantas, Panam (Dekat Kampus UNRI & UIN Suska), Pekanbaru, Riau.',
             ),
             const SizedBox(height: 10),
-            const Text(
-              '⏰ Jam Operasional Quiet Study Space:\nSenin - Sabtu: 08.00 - 22.00 WIB\nMinggu: 10.00 - 20.00 WIB',
-              style: TextStyle(fontFamily: 'Poppins', fontSize: 13, color: TaklukColors.ink, height: 1.5),
+            _HubInfoRow(
+              icon: LucideIcons.clock,
+              text: 'Jam Operasional Quiet Study Space:\nSenin - Sabtu: 08.00 - 22.00 WIB\nMinggu: 10.00 - 20.00 WIB',
             ),
             const SizedBox(height: 10),
-            const Text(
-              '💬 Layanan WhatsApp Kasir:\n0812-3456-7890 (Info Crash Course, Bootcamp, & pass)',
-              style: TextStyle(fontFamily: 'Poppins', fontSize: 13, color: TaklukColors.ink, height: 1.5),
+            _HubInfoRow(
+              icon: LucideIcons.messageCircle,
+              text: 'Layanan WhatsApp Kasir:\n0812-3456-7890 (Info Crash Course, Bootcamp, & pass)',
             ),
             const SizedBox(height: 20),
             TaklukButton(
@@ -329,6 +335,40 @@ class ProfileScreen extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+
+/// Baris informasi Panam Hub dengan ikon 2D minimalis.
+class _HubInfoRow extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _HubInfoRow({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(icon, size: 16, color: TaklukColors.primary),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 13,
+              color: TaklukColors.ink,
+              height: 1.5,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

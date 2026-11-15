@@ -1,7 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/domain/models/user_model.dart';
-import '../../../../core/domain/mock_data.dart';
+import '../../../../core/network/api_exception.dart';
 import '../../../../core/network/dio_client.dart';
 import '../../../../core/security/device_info_service.dart';
 import '../../data/auth_repository.dart';
@@ -40,11 +43,12 @@ class AuthState {
   }
 }
 
+
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
   return AuthNotifier(
-    ref.read(authRepositoryProvider),
-    ref.read(secureStorageProvider),
-    ref.read(deviceInfoServiceProvider),
+    ref.watch(authRepositoryProvider),
+    ref.watch(secureStorageProvider),
+    ref.watch(deviceInfoServiceProvider),
   );
 });
 
@@ -56,28 +60,63 @@ class AuthNotifier extends StateNotifier<AuthState> {
   AuthNotifier(this._repository, this._storage, this._deviceInfo)
       : super(const AuthState());
 
+  /// Memulihkan sesi dari token JWT yang tersimpan, lalu menyegarkan profil
+  /// dari `GET /api/profile/me`.
   Future<void> checkAuthStatus() async {
-    final token = await _storage.read(key: 'jwt_token');
-    if (token != null) {
-      state = AuthState(
-        status: AuthStatus.authenticated,
-        user: MockData.demoUser,
-      );
-    } else {
+    final token = await _storage.read(key: StorageKeys.jwtToken);
+    if (token == null || token.isEmpty) {
       state = const AuthState(status: AuthStatus.unauthenticated);
+      return;
+    }
+
+    // Pastikan X-Device-ID tersedia untuk seluruh request terproteksi.
+    await _deviceInfo.getDeviceId();
+
+    try {
+      final user = await _repository.fetchProfile();
+      await _persistUser(user);
+      state = AuthState(status: AuthStatus.authenticated, user: user);
+    } on ApiException catch (error) {
+      if (error.requiresReLogin) {
+        await _clearSession();
+        state = AuthState(
+          status: AuthStatus.unauthenticated,
+          errorMessage: error.message,
+        );
+        return;
+      }
+      // Gagal jaringan: tetap pakai profil terakhir yang tersimpan.
+      final cached = await _readCachedUser();
+      state = cached != null
+          ? AuthState(status: AuthStatus.authenticated, user: cached)
+          : AuthState(
+              status: AuthStatus.unauthenticated,
+              errorMessage: error.message,
+            );
+    } catch (_) {
+      final cached = await _readCachedUser();
+      state = cached != null
+          ? AuthState(status: AuthStatus.authenticated, user: cached)
+          : const AuthState(status: AuthStatus.unauthenticated);
     }
   }
 
   Future<bool> requestOtp(String email) async {
-    state = state.copyWith(status: AuthStatus.loading);
+    state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
     try {
-      final success = await _repository.requestOtp(email);
+      await _repository.requestOtp(email);
       state = state.copyWith(
         status: AuthStatus.unauthenticated,
-        otpSent: success,
+        otpSent: true,
       );
-      return success;
-    } catch (e) {
+      return true;
+    } on ApiException catch (error) {
+      state = state.copyWith(
+        status: AuthStatus.error,
+        errorMessage: error.message,
+      );
+      return false;
+    } catch (_) {
       state = state.copyWith(
         status: AuthStatus.error,
         errorMessage: 'Gagal mengirim OTP. Coba lagi.',
@@ -94,10 +133,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
     String? university,
     int? semester,
   }) async {
-    state = state.copyWith(otpVerifying: true);
+    state = state.copyWith(otpVerifying: true, errorMessage: null);
     try {
       final deviceId = await _deviceInfo.getDeviceId();
-      final user = await _repository.verifyOtp(
+      final session = await _repository.verifyOtp(
         email: email,
         otpCode: otpCode,
         deviceId: deviceId,
@@ -107,24 +146,27 @@ class AuthNotifier extends StateNotifier<AuthState> {
         semester: semester,
       );
 
-      if (user != null) {
-        await _storage.write(key: 'jwt_token', value: 'demo_jwt_${user.id}');
-        await _storage.write(key: 'device_id', value: deviceId);
+      await _storage.write(key: StorageKeys.jwtToken, value: session.token);
+      await _storage.write(key: StorageKeys.deviceId, value: deviceId);
 
-        state = AuthState(
-          status: AuthStatus.authenticated,
-          user: user,
-        );
-        MockData.demoUser = user;
-        return true;
-      } else {
-        state = state.copyWith(
-          otpVerifying: false,
-          errorMessage: 'Kode OTP salah. Periksa kembali.',
-        );
-        return false;
+      // Profil lengkap (referral code, masa aktif, dll) diambil dari backend.
+      var user = session.user;
+      try {
+        user = await _repository.fetchProfile();
+      } on ApiException {
+        // Tetap gunakan data dari respons verify-otp bila profil gagal dimuat.
       }
-    } catch (e) {
+
+      await _persistUser(user);
+      state = AuthState(status: AuthStatus.authenticated, user: user);
+      return true;
+    } on ApiException catch (error) {
+      state = state.copyWith(
+        otpVerifying: false,
+        errorMessage: error.message,
+      );
+      return false;
+    } catch (_) {
       state = state.copyWith(
         otpVerifying: false,
         errorMessage: 'Verifikasi gagal. Coba lagi.',
@@ -133,40 +175,59 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  Future<void> loginAsDemo() async {
-    state = state.copyWith(status: AuthStatus.loading);
-    await Future.delayed(const Duration(milliseconds: 400));
 
-    final deviceId = await _deviceInfo.getDeviceId();
-    await _storage.write(key: 'jwt_token', value: 'demo_jwt_usr-demo-001');
-    await _storage.write(key: 'device_id', value: deviceId);
-
-    MockData.demoUser = MockData.demoUser.copyWith(activeDeviceId: deviceId);
-    state = AuthState(
-      status: AuthStatus.authenticated,
-      user: MockData.demoUser,
+  /// Masuk cepat memakai akun demo yang di-seed backend:
+  /// `aisyah@takluk.dev` + OTP `123456` (mode development).
+  Future<bool> loginAsDemo() {
+    return verifyOtp(
+      email: AppConstants.demoEmail,
+      otpCode: AppConstants.demoOtp,
     );
   }
 
-  void updateSubscription(DateTime validUntil) {
-    if (state.user != null) {
-      final updated = state.user!.copyWith(subscriptionValidUntil: validUntil);
-      MockData.demoUser = updated;
-      state = state.copyWith(user: updated);
+  /// Menyegarkan profil dari server (mis. setelah pembayaran sukses).
+  Future<void> refreshProfile() async {
+    try {
+      final user = await _repository.fetchProfile();
+      await _persistUser(user);
+      state = state.copyWith(
+        status: AuthStatus.authenticated,
+        user: user,
+        errorMessage: null,
+      );
+    } on ApiException catch (error) {
+      state = state.copyWith(errorMessage: error.message);
     }
   }
 
   Future<void> logout() async {
-    await _storage.deleteAll();
+    await _clearSession();
     state = const AuthState(status: AuthStatus.unauthenticated);
   }
 
-  void resetDemoData() {
-    MockData.demoUser = MockData.demoUser.copyWith(
-      subscriptionValidUntil: DateTime.now().add(const Duration(days: 25)),
+  Future<void> _persistUser(UserModel user) async {
+    await _storage.write(
+      key: StorageKeys.userJson,
+      value: jsonEncode(user.toJson()),
     );
-    MockData.watchHistories.clear();
-    state = state.copyWith(user: MockData.demoUser);
+  }
+
+  Future<UserModel?> _readCachedUser() async {
+    try {
+      final raw = await _storage.read(key: StorageKeys.userJson);
+      if (raw == null || raw.isEmpty) return null;
+      final json = jsonDecode(raw);
+      if (json is! Map) return null;
+      return UserModel.fromJson(Map<String, dynamic>.from(json));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _clearSession() async {
+    await _storage.delete(key: StorageKeys.jwtToken);
+    await _storage.delete(key: StorageKeys.userJson);
   }
 }
+
 

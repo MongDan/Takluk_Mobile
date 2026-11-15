@@ -7,6 +7,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/constants/enums.dart';
 import '../../../../core/widgets/takluk_button.dart';
 import '../../../../core/widgets/takluk_input.dart';
+import '../../../../core/widgets/takluk_logo.dart';
 import '../../../../core/widgets/takluk_segmented_control.dart';
 import '../../../../core/widgets/takluk_toast.dart';
 import '../providers/auth_provider.dart';
@@ -94,6 +95,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         _otpError = null;
       });
       TaklukToast.show(context, 'Kode OTP 6 digit telah dikirim ke $_currentEmail');
+    } else if (mounted) {
+      TaklukToast.show(
+        context,
+        ref.read(authProvider).errorMessage ?? 'Gagal mengirim kode OTP',
+        isError: true,
+      );
     }
   }
 
@@ -115,7 +122,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     if (success && mounted) {
       context.go('/home');
     } else if (mounted) {
-      setState(() => _otpError = 'Kode OTP salah. Gunakan kode demo: 123456');
+      setState(() => _otpError =
+          ref.read(authProvider).errorMessage ?? 'Kode OTP salah. Periksa kembali.');
       HapticFeedback.heavyImpact();
     }
   }
@@ -145,40 +153,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Center(
-                    child: Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        gradient: TaklukGradients.primary,
-                        borderRadius: BorderRadius.circular(18),
-                        boxShadow: [
-                          BoxShadow(
-                            color: TaklukColors.primary.withOpacity(0.25),
-                            blurRadius: 16,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
-                      ),
-                      child: Center(
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.school, color: TaklukColors.accent, size: 22),
-                            const SizedBox(width: 2),
-                            Container(
-                              padding: const EdgeInsets.all(3),
-                              decoration: const BoxDecoration(
-                                color: Colors.white,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.play_arrow_rounded, color: TaklukColors.primary, size: 12),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+                  const Center(child: TaklukLogo(size: 64, radius: 18)),
                   const SizedBox(height: 16),
                   const Center(
                     child: Text(
@@ -247,8 +222,19 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       variant: ButtonVariant.secondary,
                       icon: LucideIcons.userCheck,
                       onPressed: () async {
-                        await ref.read(authProvider.notifier).loginAsDemo();
-                        if (mounted) context.go('/home');
+                        final success =
+                            await ref.read(authProvider.notifier).loginAsDemo();
+                        if (!context.mounted) return;
+                        if (success) {
+                          context.go('/home');
+                        } else {
+                          TaklukToast.show(
+                            context,
+                            ref.read(authProvider).errorMessage ??
+                                'Gagal masuk dengan akun demo',
+                            isError: true,
+                          );
+                        }
                       },
                     ),
                     const SizedBox(height: 12),
@@ -556,14 +542,23 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               color: TaklukColors.tintWarm,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Text(
-              '💡 Demo OTP: 123456 (Pengikatan Perangkat Otomatis)',
-              style: TextStyle(
-                fontFamily: 'Poppins',
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: TaklukColors.ink,
-              ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(LucideIcons.lightbulb, size: 14, color: TaklukColors.accent),
+                SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    'Demo OTP: 123456 (Pengikatan Perangkat Otomatis)',
+                    style: TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: TaklukColors.ink,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

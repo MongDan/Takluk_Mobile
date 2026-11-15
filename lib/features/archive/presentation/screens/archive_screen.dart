@@ -4,10 +4,12 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/constants/enums.dart';
-import '../../../../core/domain/mock_data.dart';
+import '../../../../core/domain/models/archive_question_model.dart';
+import '../../../../core/domain/models/course_model.dart';
 import '../../../../core/widgets/takluk_button.dart';
 import '../../../../core/widgets/takluk_chip.dart';
-import '../../data/archive_repository.dart';
+import '../../../home/presentation/providers/home_provider.dart';
+import '../providers/archive_provider.dart';
 
 class ArchiveScreen extends ConsumerStatefulWidget {
   const ArchiveScreen({super.key});
@@ -22,8 +24,16 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final repo = ref.watch(archiveRepositoryProvider);
-    final courses = MockData.courses;
+    final courses =
+        ref.watch(coursesProvider).valueOrNull ?? const <CourseModel>[];
+    final questionsAsync = ref.watch(
+      archiveQuestionsProvider((
+        university: _selectedUniversity,
+        examType: _selectedExamType,
+      )),
+    );
+    final allQuestions =
+        questionsAsync.valueOrNull ?? const <ArchiveQuestionModel>[];
 
     return Scaffold(
       backgroundColor: TaklukColors.bg,
@@ -119,17 +129,33 @@ class _ArchiveScreenState extends ConsumerState<ArchiveScreen> {
             ),
             const SizedBox(height: 12),
 
+            if (questionsAsync.isLoading)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: LinearProgressIndicator(minHeight: 2),
+              ),
+            if (questionsAsync.hasError)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+                child: Text(
+                  'Gagal memuat arsip soal: ${questionsAsync.error}',
+                  style: const TextStyle(
+                    fontFamily: 'Poppins',
+                    fontSize: 11,
+                    color: TaklukColors.error,
+                  ),
+                ),
+              ),
+
             Expanded(
               child: ListView.builder(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, TaklukSpacing.bottomSafe),
                 itemCount: courses.length,
                 itemBuilder: (context, index) {
                   final course = courses[index];
-                  final questions = repo.getQuestions(
-                    courseId: course.id,
-                    university: _selectedUniversity,
-                    examType: _selectedExamType,
-                  );
+                  final questions = allQuestions
+                      .where((q) => q.courseId == course.id)
+                      .toList();
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 16),

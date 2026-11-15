@@ -1,10 +1,12 @@
 class AppConstants {
-  // API
-  static const String baseUrl = 'https://api.takluk.id';
+  // API (sumber tunggal ada di AppConfig)
   static const Duration apiTimeout = Duration(seconds: 30);
 
-  // Pricing
-  static const int subscriptionPrice = 49000;
+  // Assets
+  static const String splashLogoAsset = 'assets/images/logotakluk.jpeg';
+
+  // Pricing (sama dengan backend: Rp25.000/bulan)
+  static const int subscriptionPrice = 25000;
   static const int qrisTimerMinutes = 15;
 
   // Video
@@ -16,22 +18,22 @@ class AppConstants {
   static const int otpLength = 6;
   static const int otpExpiryMinutes = 5;
   static const int otpMaxAttempts = 5;
-  static const String demoOtp = '123456';
 
-  // Demo Account
-  static const String demoEmail = 'aisyah@demo.takluk.id';
-  static const String demoName = 'Aisyah Putri';
-  static const String demoNim = '12250312345';
-  static const String demoUniversity = 'UIN_SUSKA';
-  static const int demoSemester = 3;
+  // Akun demo (seed backend)
+  static const String demoEmail = 'aisyah@takluk.dev';
+  static const String demoOtp = '123456';
 
   // Layout
   static const double bottomBarHeight = 112;
   static const double touchTarget = 44;
-
-  // Vouchers
-  static const Map<String, int> vouchers = {
-    'PANAM10': 10000,
-    'UINSUSKA': 5000,
-  };
 }
+
+/// Key penyimpanan lokal (flutter_secure_storage).
+class StorageKeys {
+  StorageKeys._();
+
+  static const String jwtToken = 'jwt_token';
+  static const String deviceId = 'device_id';
+  static const String userJson = 'user_json';
+}
+

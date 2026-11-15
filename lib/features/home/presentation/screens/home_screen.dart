@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import '../../../../core/config/app_config.dart';
 import '../../../../core/theme/app_theme.dart';
-import '../../../../core/domain/mock_data.dart';
-import '../../../../core/widgets/takluk_toast.dart';
 import '../../../../core/widgets/video_row_card.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../hub/presentation/widgets/hub_booking_sheet.dart';
 import '../providers/home_provider.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -33,7 +33,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _updateCountdown() {
-    final diff = MockData.nextExamDate.difference(DateTime.now());
+    final diff = AppConfig.nextExamDate.difference(DateTime.now());
     if (mounted) setState(() => _countdown = diff.isNegative ? Duration.zero : diff);
   }
 
@@ -50,6 +50,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final courses = ref.watch(coursesProvider);
     final popularVideos = ref.watch(popularVideosProvider);
     final continueWatching = ref.watch(continueWatchingProvider);
+    final hubServices = ref.watch(hubServicesProvider);
 
     return Scaffold(
       backgroundColor: TaklukColors.bg,
@@ -68,7 +69,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Halo, ${user?.fullName.split(' ').first ?? 'Mahasiswa'} 👋',
+                            'Halo, ${user?.fullName.split(' ').first ?? 'Mahasiswa'}',
                             style: const TextStyle(
                               fontFamily: 'Poppins',
                               fontSize: 20,
@@ -170,10 +171,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
               const SizedBox(height: 20),
 
-              if (continueWatching.isNotEmpty) ...[
+              if (continueWatching.valueOrNull?.isNotEmpty ?? false) ...[
                 _sectionHeader('Lanjut Menonton', icon: LucideIcons.playCircle),
                 const SizedBox(height: 10),
-                ...continueWatching.map((wh) => Padding(
+                ...continueWatching.value!.map((wh) => Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: VideoRowCard(
                     title: wh.videoTitle ?? 'Video Materi',
@@ -208,7 +209,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
               const SizedBox(height: 24),
 
-              _sectionHeader('Rekomendasi Bedah Soal Populer 🔥', icon: LucideIcons.flame),
+              _sectionHeader('Rekomendasi Bedah Soal Populer', icon: LucideIcons.flame),
               const SizedBox(height: 10),
               popularVideos.when(
                 data: (list) => Column(
@@ -218,7 +219,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       title: v.title,
                       subtitle: '${v.courseName} • ${v.category.label}',
                       duration: v.formattedDuration,
-                      symbol: v.courseSymbol ?? '📚',
+                      symbol: v.courseSymbol ?? '',
                       isLocked: !v.isFree && !(user?.isSubscribed ?? false),
                       isFree: v.isFree,
                       onTap: () {
@@ -242,38 +243,42 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
               const SizedBox(height: 24),
 
-              _sectionHeader('Layanan Offline Panam Academy Hub 🏫'),
+              _sectionHeader('Layanan Offline Panam Academy Hub', icon: LucideIcons.store),
               const SizedBox(height: 12),
-              SizedBox(
-                height: 148,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
+              hubServices.when(
+                data: (catalog) => SizedBox(
+                  height: 148,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    itemCount: catalog.services.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 12),
+                    itemBuilder: (_, index) {
+                      final service = catalog.services[index];
+                      return _HubInfoCard(
+                        title: service.name,
+                        subtitle: service.tagline,
+                        price: service.priceFormatted,
+                        icon: _hubIcon(service.category),
+                        onTap: () => HubBookingSheet.show(context, service),
+                      );
+                    },
+                  ),
+                ),
+                loading: () => const SizedBox(
+                  height: 120,
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (error, _) => Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  children: [
-                    _HubInfoCard(
-                      title: 'Crash Course H-7 Ujian',
-                      subtitle: 'Bimbingan intensif 3 hari sebelum ujian',
-                      price: 'Rp150.000/paket',
-                      icon: '📖',
-                      onTap: () => TaklukToast.show(context, 'Pendaftaran Crash Course dapat melalui Admin Kasir Panam Hub'),
+                  child: Text(
+                    'Gagal memuat layanan Panam Hub. $error',
+                    style: const TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 12,
+                      color: TaklukColors.muted,
                     ),
-                    const SizedBox(width: 12),
-                    _HubInfoCard(
-                      title: 'Bootcamp Olah Data Skripsi',
-                      subtitle: 'Bimbingan SPSS & SEM-PLS sampai lulus',
-                      price: 'Rp450.000/peserta',
-                      icon: '📊',
-                      onTap: () => TaklukToast.show(context, 'Pendaftaran Bootcamp Olah Data dapat melalui Admin Kasir Panam Hub'),
-                    ),
-                    const SizedBox(width: 12),
-                    _HubInfoCard(
-                      title: 'Quiet Study Space',
-                      subtitle: 'Ruang belajar ber-AC, hening & WiFi cepat',
-                      price: 'Pass Harian Rp20.000',
-                      icon: '🤫',
-                      onTap: () => TaklukToast.show(context, 'Tiket harian Quiet Study Space tersedia langsung di lokasi Panam Hub'),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ],
@@ -337,9 +342,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
                 ),
                 if (!isSubscribed)
-                  const Text(
-                    'Rp49.000/bln',
-                    style: TextStyle(
+                  Text(
+                    'Rp${_formatRupiah(AppConfig.subscriptionPrice)}/bln',
+                    style: const TextStyle(
                       fontFamily: 'Poppins',
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
@@ -439,7 +444,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Hitung Mundur ${MockData.nextExamLabel}',
+                  'Hitung Mundur ${AppConfig.nextExamLabel}',
                   style: const TextStyle(
                     fontFamily: 'Poppins',
                     fontSize: 13,
@@ -459,11 +464,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    _CountdownBox(value: '$days', label: 'Hari'),
+                    _CountdownBox(value: days.toString(), label: 'Hari'),
                     const SizedBox(width: 8),
-                    _CountdownBox(value: '${hours.toString().padLeft(2, '0')}', label: 'Jam'),
+                    _CountdownBox(
+                      value: hours.toString().padLeft(2, '0'),
+                      label: 'Jam',
+                    ),
                     const SizedBox(width: 8),
-                    _CountdownBox(value: '${minutes.toString().padLeft(2, '0')}', label: 'Menit'),
+                    _CountdownBox(
+                      value: minutes.toString().padLeft(2, '0'),
+                      label: 'Menit',
+                    ),
                   ],
                 ),
               ],
@@ -549,6 +560,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ],
       ),
     );
+  }
+
+  IconData _hubIcon(String category) {
+    switch (category) {
+      case 'EXAM_PREP':
+        return LucideIcons.bookOpen;
+      case 'BOOTCAMP':
+        return LucideIcons.barChart3;
+      case 'COWORKING':
+        return LucideIcons.volumeX;
+      default:
+        return LucideIcons.store;
+    }
+  }
+
+  String _formatRupiah(int value) {
+    return value.toString().replaceAllMapped(
+          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+          (match) => '${match[1]}.',
+        );
   }
 
   Widget _sectionHeader(String title, {IconData? icon}) {
@@ -724,7 +755,7 @@ class _HubInfoCard extends StatefulWidget {
   final String title;
   final String subtitle;
   final String price;
-  final String icon;
+  final IconData icon;
   final VoidCallback onTap;
 
   const _HubInfoCard({
@@ -786,14 +817,19 @@ class _HubInfoCardState extends State<_HubInfoCard> with SingleTickerProviderSta
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(widget.icon, style: const TextStyle(fontSize: 26)),
-                  Text(
-                    widget.price,
-                    style: const TextStyle(
-                      fontFamily: 'Poppins',
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: TaklukColors.accent,
+                  Icon(widget.icon, size: 24, color: TaklukColors.primary),
+                  Flexible(
+                    child: Text(
+                      widget.price,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: TaklukColors.accent,
+                      ),
                     ),
                   ),
                 ],

@@ -112,14 +112,18 @@ class _VideoRowCardState extends State<VideoRowCard>
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    Text(
-                      widget.symbol,
-                      style: const TextStyle(
-                        fontSize: 28,
-                        color: Colors.white70,
-                        fontWeight: FontWeight.w300,
+                    if (widget.symbol.isEmpty)
+                      const Icon(LucideIcons.bookOpen,
+                          size: 24, color: Colors.white70)
+                    else
+                      Text(
+                        widget.symbol,
+                        style: const TextStyle(
+                          fontSize: 28,
+                          color: Colors.white70,
+                          fontWeight: FontWeight.w300,
+                        ),
                       ),
-                    ),
                     if (widget.isLocked)
                       Container(
                         decoration: BoxDecoration(

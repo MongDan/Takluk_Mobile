@@ -5,7 +5,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/constants/enums.dart';
 import '../../../../core/widgets/empty_state.dart';
 import '../../../../core/widgets/push_page_header.dart';
-import '../../../payment/data/payment_repository.dart';
+import '../../../payment/presentation/providers/payment_provider.dart';
 
 class TransactionHistoryScreen extends ConsumerWidget {
   const TransactionHistoryScreen({super.key});
@@ -19,19 +19,31 @@ class TransactionHistoryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final repo = ref.watch(paymentRepositoryProvider);
-    final transactions = repo.transactions;
+    final transactionsAsync = ref.watch(transactionHistoryProvider);
 
     return Scaffold(
       backgroundColor: TaklukColors.bg,
       appBar: const PushPageHeader(title: 'Riwayat Transaksi'),
-      body: transactions.isEmpty
-          ? const EmptyState(
+      body: transactionsAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, _) => EmptyState(
+          icon: LucideIcons.wifiOff,
+          title: 'Gagal Memuat Riwayat',
+          subtitle: error.toString(),
+          actionLabel: 'Coba Lagi',
+          onAction: () => ref.invalidate(transactionHistoryProvider),
+        ),
+        data: (transactions) {
+          if (transactions.isEmpty) {
+            return const EmptyState(
               icon: LucideIcons.receipt,
               title: 'Belum Ada Transaksi',
-              subtitle: 'Riwayat pembayaran langganan QRIS kamu akan muncul di sini',
-            )
-          : ListView.builder(
+              subtitle:
+                  'Riwayat pembayaran langganan QRIS kamu akan muncul di sini',
+            );
+          }
+
+          return ListView.builder(
               padding: const EdgeInsets.all(20),
               itemCount: transactions.length,
               itemBuilder: (context, index) {
@@ -130,7 +142,9 @@ class TransactionHistoryScreen extends ConsumerWidget {
                   ),
                 );
               },
-            ),
+            );
+        },
+      ),
     );
   }
 }

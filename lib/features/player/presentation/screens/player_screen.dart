@@ -4,16 +4,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/constants/app_constants.dart';
-import '../../../../core/domain/mock_data.dart';
 import '../../../../core/domain/models/video_model.dart';
 import '../../../../core/domain/models/watch_history_model.dart';
 import '../../../../core/security/screen_security.dart';
+import '../../../../core/widgets/empty_state.dart';
 import '../../../../core/widgets/push_page_header.dart';
 import '../../../../core/widgets/takluk_segmented_control.dart';
 import '../../../../core/widgets/takluk_toast.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../home/data/progress_repository.dart';
+import '../../../home/presentation/providers/home_provider.dart';
+import '../../../progress/presentation/providers/progress_provider.dart';
+import '../providers/player_provider.dart';
 
 class PlayerScreen extends ConsumerStatefulWidget {
   final String videoId;
@@ -26,7 +31,12 @@ class PlayerScreen extends ConsumerStatefulWidget {
 
 class _PlayerScreenState extends ConsumerState<PlayerScreen>
     with SingleTickerProviderStateMixin {
-  late VideoModel _video;
+  VideoModel? _video;
+  VideoPlaybackModel? _playback;
+  bool _isLoading = true;
+  String? _error;
+  bool _isLocked = false;
+
   bool _isPlaying = true;
   double _currentPositionSec = 0;
   Timer? _playbackTimer;
@@ -49,25 +59,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   late AnimationController _bookmarkAnimCtrl;
   late Animation<double> _bookmarkScale;
 
+  /// Video yang sudah selesai dimuat dari API.
+  VideoModel get _currentVideo => _video!;
+
   @override
   void initState() {
     super.initState();
-    _video = MockData.videos.firstWhere(
-      (v) => v.id == widget.videoId,
-      orElse: () => MockData.videos.first,
-    );
 
     // Initialize security
     ScreenSecurity.enableSecureMode();
-    _captureSubscription = ScreenSecurity.onScreenCaptureChanged.listen((captured) {
+    _captureSubscription =
+        ScreenSecurity.onScreenCaptureChanged.listen((captured) {
       if (mounted) setState(() => _isScreenCaptured = captured);
     });
-
-    // Check last position from history
-    final history = MockData.watchHistories.where((w) => w.videoId == _video.id).firstOrNull;
-    if (history != null) {
-      _currentPositionSec = history.lastPositionSec.toDouble();
-    }
 
     // Bookmark animation
     _bookmarkAnimCtrl = AnimationController(
@@ -79,11 +83,74 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       TweenSequenceItem(tween: Tween(begin: 1.3, end: 1.0), weight: 50),
     ]).animate(CurvedAnimation(parent: _bookmarkAnimCtrl, curve: Curves.easeInOut));
 
+    _loadVideo();
+  }
+
+  /// Memuat metadata video (`/videos/:id`) dan Signed HLS URL (`/videos/:id/play`).
+  Future<void> _loadVideo() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    // Pastikan tombol "Coba Lagi" benar-benar mengambil data baru.
+    ref.invalidate(videoDetailProvider(widget.videoId));
+    ref.invalidate(videoPlaybackProvider(widget.videoId));
+
+    try {
+      final detail =
+          await ref.read(videoDetailProvider(widget.videoId).future);
+      if (!mounted) return;
+
+      final lastPosition =
+          ref.read(progressRepositoryProvider).lastPositionOf(widget.videoId);
+      setState(() {
+        _video = detail;
+        _currentPositionSec = lastPosition.toDouble();
+        _isLoading = false;
+      });
+
+      try {
+        final playback =
+            await ref.read(videoPlaybackProvider(widget.videoId).future);
+        if (!mounted) return;
+        setState(() => _playback = playback);
+      } on ApiException catch (error) {
+        if (!mounted) return;
+        if (error.isPaymentRequired) {
+          setState(() => _isLocked = true);
+        } else {
+          TaklukToast.show(context, error.message, isError: true);
+        }
+      }
+
+      _startTimers();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _error = error.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _error = 'Gagal memuat video. Coba lagi ya!';
+      });
+    }
+  }
+
+  void _startTimers() {
+    _playbackTimer?.cancel();
+    _watermarkTimer?.cancel();
+    _heartbeatTimer?.cancel();
+
     // Playback loop
     _playbackTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_isPlaying && mounted) {
+        final duration = _video?.durationSeconds ?? 0;
         setState(() {
-          if (_currentPositionSec < _video.durationSeconds) {
+          if (_currentPositionSec < duration) {
             _currentPositionSec += 1;
           } else {
             _isPlaying = false;
@@ -94,7 +161,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     });
 
     // Watermark random position timer (every 4 seconds)
-    _watermarkTimer = Timer.periodic(const Duration(seconds: AppConstants.watermarkIntervalSec), (_) {
+    _watermarkTimer =
+        Timer.periodic(const Duration(seconds: AppConstants.watermarkIntervalSec), (_) {
       if (mounted) {
         setState(() {
           _watermarkX = 0.1 + _random.nextDouble() * 0.6;
@@ -110,64 +178,55 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 
-  void _syncProgress({bool isCompleted = false}) {
-    final user = ref.read(authProvider).user;
-    final idx = MockData.watchHistories.indexWhere((w) => w.videoId == _video.id);
-    final completed = isCompleted || (_currentPositionSec / _video.durationSeconds >= AppConstants.completionThreshold);
+  Future<void> _syncProgress({bool isCompleted = false}) async {
+    final video = _video;
+    if (video == null || video.durationSeconds <= 0) return;
 
-    if (idx >= 0) {
-      MockData.watchHistories[idx] = MockData.watchHistories[idx].copyWith(
-        lastPositionSec: _currentPositionSec.toInt(),
-        totalWatchedSec: MockData.watchHistories[idx].totalWatchedSec + AppConstants.progressSyncIntervalSec,
-        isCompleted: completed,
-        lastWatchedAt: DateTime.now(),
-      );
-    } else {
-      MockData.watchHistories.add(WatchHistoryModel(
-        id: 'wh-${DateTime.now().millisecondsSinceEpoch}',
-        userId: user?.id ?? 'usr-demo-001',
-        videoId: _video.id,
-        lastPositionSec: _currentPositionSec.toInt(),
-        totalWatchedSec: _currentPositionSec.toInt(),
-        isCompleted: completed,
-        lastWatchedAt: DateTime.now(),
-        videoTitle: _video.title,
-        courseSymbol: _video.courseSymbol,
-        videoDurationSeconds: _video.durationSeconds,
-        courseName: _video.courseName,
-      ));
+    final completed = isCompleted ||
+        (_currentPositionSec / video.durationSeconds >=
+            AppConstants.completionThreshold);
+
+    try {
+      await ref.read(progressRepositoryProvider).sync(
+            videoId: video.id,
+            lastPositionSec: _currentPositionSec.toInt(),
+            watchedDeltaSec: AppConstants.progressSyncIntervalSec,
+          );
+      ref.invalidate(continueWatchingProvider);
+      if (completed && mounted) setState(() => _isPlaying = false);
+    } on ApiException catch (error) {
+      debugPrint('Gagal sync progres: ${error.message}');
     }
   }
 
-  void _toggleBookmark() {
-    _bookmarkAnimCtrl.forward(from: 0);
-    final user = ref.read(authProvider).user;
-    final idx = MockData.watchHistories.indexWhere((w) => w.videoId == _video.id);
+  Future<void> _toggleBookmark() async {
+    final video = _video;
+    if (video == null) return;
 
-    if (idx >= 0) {
-      final newVal = !MockData.watchHistories[idx].isBookmarked;
-      MockData.watchHistories[idx] = MockData.watchHistories[idx].copyWith(isBookmarked: newVal);
-      TaklukToast.show(context, newVal ? 'Disimpan ke Bookmark' : 'Dihapus dari Bookmark');
-    } else {
-      MockData.watchHistories.add(WatchHistoryModel(
-        id: 'wh-${DateTime.now().millisecondsSinceEpoch}',
-        userId: user?.id ?? 'usr-demo-001',
-        videoId: _video.id,
-        isBookmarked: true,
-        lastWatchedAt: DateTime.now(),
-        videoTitle: _video.title,
-        courseSymbol: _video.courseSymbol,
-        videoDurationSeconds: _video.durationSeconds,
-        courseName: _video.courseName,
-      ));
-      TaklukToast.show(context, 'Disimpan ke Bookmark');
+    _bookmarkAnimCtrl.forward(from: 0);
+    final bookmarks =
+        ref.read(bookmarksProvider).valueOrNull ?? const <WatchHistoryModel>[];
+    final newValue = !bookmarks.any((w) => w.videoId == video.id);
+
+    try {
+      await ref.read(progressRepositoryProvider).setBookmark(video.id, newValue);
+      ref.invalidate(bookmarksProvider);
+      ref.invalidate(continueWatchingProvider);
+      if (mounted) {
+        setState(() {});
+        TaklukToast.show(
+          context,
+          newValue ? 'Disimpan ke Bookmark' : 'Dihapus dari Bookmark',
+        );
+      }
+    } on ApiException catch (error) {
+      if (mounted) TaklukToast.show(context, error.message, isError: true);
     }
-    setState(() {});
   }
 
   @override
   void dispose() {
-    _syncProgress();
+    unawaited(_syncProgress());
     _playbackTimer?.cancel();
     _watermarkTimer?.cancel();
     _heartbeatTimer?.cancel();
@@ -186,12 +245,38 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authProvider).user;
-    final isBookmarked = MockData.watchHistories.any((w) => w.videoId == _video.id && w.isBookmarked);
+    final video = _video;
+
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: TaklukColors.bg,
+        appBar: const PushPageHeader(title: 'Memuat Video'),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_error != null || video == null) {
+      return Scaffold(
+        backgroundColor: TaklukColors.bg,
+        appBar: const PushPageHeader(title: 'Materi Pembelajaran'),
+        body: EmptyState(
+          icon: LucideIcons.wifiOff,
+          title: 'Gagal Memuat Video',
+          subtitle: _error ?? 'Video tidak ditemukan.',
+          actionLabel: 'Coba Lagi',
+          onAction: _loadVideo,
+        ),
+      );
+    }
+
+    final bookmarks =
+        ref.watch(bookmarksProvider).valueOrNull ?? const <WatchHistoryModel>[];
+    final isBookmarked = bookmarks.any((w) => w.videoId == video.id);
 
     return Scaffold(
       backgroundColor: TaklukColors.bg,
       appBar: PushPageHeader(
-        title: _video.courseName ?? 'Materi Pembelajaran',
+        title: video.courseName ?? 'Materi Pembelajaran',
         actions: [
           IconButton(
             icon: Icon(
@@ -204,8 +289,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               TaklukToast.show(
                 context,
                 _isScreenCaptured
-                    ? '⚠️ Simulasi perekaman layar aktif (layar diblokir)'
-                    : '🛡️ Proteksi layar aman (FLAG_SECURE)',
+                    ? 'Simulasi perekaman layar aktif (layar diblokir)'
+                    : 'Proteksi layar aman (FLAG_SECURE)',
                 isError: _isScreenCaptured,
               );
             },
@@ -227,7 +312,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          _video.courseSymbol ?? '∫',
+                          _currentVideo.courseSymbol ?? '∫',
                           style: TextStyle(
                             fontSize: 48,
                             color: Colors.white.withOpacity(0.18),
@@ -236,7 +321,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Streaming HLS Terenkripsi',
+                          _isLocked
+                              ? 'Materi khusus pelanggan Takluk'
+                              : _playback == null
+                                  ? 'Menyiapkan Signed HLS Stream…'
+                                  : 'Streaming HLS Terenkripsi • aktif ${(_playback!.expiresInSeconds / 60).round()} menit',
+                          textAlign: TextAlign.center,
                           style: TextStyle(
                             fontFamily: 'Poppins',
                             fontSize: 12,
@@ -375,9 +465,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                               thumbColor: TaklukColors.accent,
                             ),
                             child: Slider(
-                              value: _currentPositionSec.clamp(0, _video.durationSeconds.toDouble()),
+                              value: _currentPositionSec.clamp(0, _currentVideo.durationSeconds.toDouble()),
                               min: 0,
-                              max: _video.durationSeconds.toDouble(),
+                              max: _currentVideo.durationSeconds.toDouble(),
                               onChanged: (val) {
                                 setState(() => _currentPositionSec = val);
                               },
@@ -398,7 +488,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                   ),
                                   const SizedBox(width: 12),
                                   Text(
-                                    '${_formatTime(_currentPositionSec.toInt())} / ${_formatTime(_video.durationSeconds)}',
+                                    '${_formatTime(_currentPositionSec.toInt())} / ${_formatTime(_currentVideo.durationSeconds)}',
                                     style: const TextStyle(
                                       fontFamily: 'Poppins',
                                       fontSize: 11,
@@ -443,7 +533,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                   children: [
                     Expanded(
                       child: Text(
-                        _video.title,
+                        _currentVideo.title,
                         style: const TextStyle(
                           fontFamily: 'Poppins',
                           fontSize: 16,
@@ -487,7 +577,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        _video.category.label,
+                        _currentVideo.category.label,
                         style: const TextStyle(
                           fontFamily: 'Poppins',
                           fontSize: 11,
@@ -498,7 +588,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'Tutor: ${_video.tutorName ?? 'Asisten Lab'}',
+                      'Tutor: ${_currentVideo.tutorName ?? 'Asisten Lab'}',
                       style: const TextStyle(
                         fontFamily: 'Poppins',
                         fontSize: 12,
@@ -532,7 +622,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   Widget _buildChaptersTab() {
-    if (_video.chapters.isEmpty) {
+    if (_currentVideo.chapters.isEmpty) {
       return const Center(
         child: Text(
           'Belum ada penanda bab untuk video ini',
@@ -543,12 +633,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      itemCount: _video.chapters.length,
+      itemCount: _currentVideo.chapters.length,
       itemBuilder: (context, index) {
-        final chapter = _video.chapters[index];
+        final chapter = _currentVideo.chapters[index];
         final isActive = _currentPositionSec >= chapter.startSecond &&
-            (index == _video.chapters.length - 1 ||
-                _currentPositionSec < _video.chapters[index + 1].startSecond);
+            (index == _currentVideo.chapters.length - 1 ||
+                _currentPositionSec < _currentVideo.chapters[index + 1].startSecond);
 
         return GestureDetector(
           onTap: () {
@@ -604,7 +694,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   Widget _buildNotesTab() {
-    final markdown = _video.summaryMarkdown ?? '### Belum ada catatan\nCatatan dan ringkasan rumus akan segera ditambahkan oleh tutor.';
+    final markdown = _currentVideo.summaryMarkdown ?? '### Belum ada catatan\nCatatan dan ringkasan rumus akan segera ditambahkan oleh tutor.';
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),

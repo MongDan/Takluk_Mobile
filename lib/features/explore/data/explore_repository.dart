@@ -1,37 +1,39 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/domain/mock_data.dart';
-import '../../../core/domain/models/video_model.dart';
 import '../../../core/constants/enums.dart';
+import '../../../core/domain/models/video_model.dart';
+import '../../home/data/home_repository.dart';
 
-final exploreRepositoryProvider = Provider<ExploreRepository>((ref) => ExploreRepository());
+final exploreRepositoryProvider = Provider<ExploreRepository>((ref) {
+  return ExploreRepository(ref.watch(homeRepositoryProvider));
+});
 
 class ExploreRepository {
-  List<VideoModel> searchVideos({
+  final HomeRepository _home;
+
+  ExploreRepository(this._home);
+
+  /// `GET /api/courses/videos` + filter kata kunci di sisi klien
+  /// (backend belum menyediakan parameter pencarian teks).
+  Future<List<VideoModel>> searchVideos({
     String? query,
     String? courseId,
     VideoCategory? category,
-  }) {
-    var results = MockData.videos.where((v) => v.isPublished).toList();
+  }) async {
+    final results = await _home.getVideos(
+      courseId: courseId,
+      category: category,
+    );
 
-    if (query != null && query.trim().isNotEmpty) {
-      final q = query.toLowerCase().trim();
-      results = results.where((v) =>
-          v.title.toLowerCase().contains(q) ||
-          (v.courseName?.toLowerCase().contains(q) ?? false) ||
-          (v.universityTag?.label.toLowerCase().contains(q) ?? false) ||
-          (v.tutorName?.toLowerCase().contains(q) ?? false)
-      ).toList();
-    }
+    if (query == null || query.trim().isEmpty) return results;
 
-    if (courseId != null) {
-      results = results.where((v) => v.courseId == courseId).toList();
-    }
-
-    if (category != null) {
-      results = results.where((v) => v.category == category).toList();
-    }
-
-    return results;
+    final q = query.toLowerCase().trim();
+    return results.where((video) {
+      return video.title.toLowerCase().contains(q) ||
+          (video.courseName?.toLowerCase().contains(q) ?? false) ||
+          (video.tutorName?.toLowerCase().contains(q) ?? false) ||
+          (video.universityTag?.label.toLowerCase().contains(q) ?? false);
+    }).toList();
   }
 }
+
 

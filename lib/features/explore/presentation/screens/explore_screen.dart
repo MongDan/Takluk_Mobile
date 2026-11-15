@@ -1,16 +1,23 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/constants/enums.dart';
-import '../../../../core/domain/mock_data.dart';
+import '../../../../core/domain/models/course_model.dart';
 import '../../../../core/domain/models/video_model.dart';
 import '../../../../core/domain/models/watch_history_model.dart';
+import '../../../../core/network/api_exception.dart';
 import '../../../../core/widgets/takluk_chip.dart';
+import '../../../../core/widgets/takluk_toast.dart';
 import '../../../../core/widgets/video_row_card.dart';
 import '../../../../core/widgets/empty_state.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../home/data/progress_repository.dart';
+import '../../../home/presentation/providers/home_provider.dart';
+import '../../../progress/presentation/providers/progress_provider.dart';
 import '../../data/explore_repository.dart';
 
 class ExploreScreen extends ConsumerStatefulWidget {
@@ -25,26 +32,70 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   String? _selectedCourseId;
   VideoCategory? _selectedCategory;
   List<VideoModel> _results = [];
+  bool _isLoading = false;
+  String? _error;
+  Timer? _debounce;
 
   @override
   void initState() {
     super.initState();
-    _performSearch();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _performSearch());
   }
 
-  void _performSearch() {
+  Future<void> _performSearch() async {
+    if (!mounted) return;
     final repo = ref.read(exploreRepositoryProvider);
     setState(() {
-      _results = repo.searchVideos(
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final results = await repo.searchVideos(
         query: _searchController.text,
         courseId: _selectedCourseId,
         category: _selectedCategory,
       );
-    });
+      if (!mounted) return;
+      setState(() {
+        _results = results;
+        _isLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _error = error.toString();
+      });
+    }
+  }
+
+  Future<void> _toggleBookmark(VideoModel video, bool currentlyBookmarked) async {
+    try {
+      await ref
+          .read(progressRepositoryProvider)
+          .setBookmark(video.id, !currentlyBookmarked);
+      ref.invalidate(bookmarksProvider);
+      ref.invalidate(continueWatchingProvider);
+      if (mounted) {
+        TaklukToast.show(
+          context,
+          currentlyBookmarked ? 'Dihapus dari Bookmark' : 'Disimpan ke Bookmark',
+        );
+      }
+    } on ApiException catch (error) {
+      if (mounted) TaklukToast.show(context, error.message, isError: true);
+    }
+  }
+
+  void _onQueryChanged(String _) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), _performSearch);
   }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -52,6 +103,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authProvider).user;
+    final courses =
+        ref.watch(coursesProvider).valueOrNull ?? const <CourseModel>[];
+    final bookmarks =
+        ref.watch(bookmarksProvider).valueOrNull ?? const <WatchHistoryModel>[];
 
     return Scaffold(
       backgroundColor: TaklukColors.bg,
@@ -76,7 +131,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: TextField(
                 controller: _searchController,
-                onChanged: (_) => _performSearch(),
+                onChanged: _onQueryChanged,
                 style: const TextStyle(fontFamily: 'Poppins', fontSize: 14, color: TaklukColors.ink),
                 decoration: InputDecoration(
                   hintText: 'Cari materi, dosen, atau kampus (UNRI, UIN)…',
@@ -114,7 +169,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                     },
                   ),
                   const SizedBox(width: 8),
-                  ...MockData.courses.map((c) => Padding(
+                  ...courses.map((c) => Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: TaklukChip(
                       label: '${c.symbol} ${c.title}',
@@ -160,7 +215,17 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             ),
             const SizedBox(height: 12),
             Expanded(
-              child: _results.isEmpty
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                      ? EmptyState(
+                          icon: LucideIcons.wifiOff,
+                          title: 'Gagal Memuat Materi',
+                          subtitle: _error!,
+                          actionLabel: 'Coba Lagi',
+                          onAction: _performSearch,
+                        )
+                      : _results.isEmpty
                   ? EmptyState(
                       icon: LucideIcons.searchX,
                       title: 'Materi Tidak Ditemukan',
@@ -180,12 +245,12 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                       itemCount: _results.length,
                       itemBuilder: (context, index) {
                         final video = _results[index];
-                        final isBookmarked = MockData.watchHistories.any((w) => w.videoId == video.id && w.isBookmarked);
+                        final isBookmarked = bookmarks.any((w) => w.videoId == video.id);
                         return VideoRowCard(
                           title: video.title,
                           subtitle: '${video.courseName} • ${video.category.label}',
                           duration: video.formattedDuration,
-                          symbol: video.courseSymbol ?? '📚',
+                          symbol: video.courseSymbol ?? '',
                           isLocked: !video.isFree && !(user?.isSubscribed ?? false),
                           isFree: video.isFree,
                           isBookmarked: isBookmarked,
@@ -196,27 +261,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                               context.push('/checkout');
                             }
                           },
-                          onBookmarkTap: () {
-                            final idx = MockData.watchHistories.indexWhere((w) => w.videoId == video.id);
-                            if (idx >= 0) {
-                              MockData.watchHistories[idx] = MockData.watchHistories[idx].copyWith(
-                                isBookmarked: !MockData.watchHistories[idx].isBookmarked,
-                              );
-                            } else {
-                              MockData.watchHistories.add(WatchHistoryModel(
-                                id: 'wh-${DateTime.now().millisecondsSinceEpoch}',
-                                userId: user?.id ?? 'usr-demo-001',
-                                videoId: video.id,
-                                isBookmarked: true,
-                                lastWatchedAt: DateTime.now(),
-                                videoTitle: video.title,
-                                courseSymbol: video.courseSymbol,
-                                videoDurationSeconds: video.durationSeconds,
-                                courseName: video.courseName,
-                              ));
-                            }
-                            setState(() {});
-                          },
+                          onBookmarkTap: () =>
+                              _toggleBookmark(video, isBookmarked),
                         );
                       },
                     ),

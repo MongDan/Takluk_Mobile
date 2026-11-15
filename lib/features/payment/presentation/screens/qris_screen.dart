@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import '../../../../core/constants/enums.dart';
+import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/domain/models/transaction_model.dart';
 import '../../../../core/widgets/push_page_header.dart';
@@ -24,6 +26,7 @@ class QrisScreen extends ConsumerStatefulWidget {
 class _QrisScreenState extends ConsumerState<QrisScreen> {
   TransactionModel? _transaction;
   Timer? _timer;
+  Timer? _pollTimer;
   Duration _timeLeft = const Duration(minutes: 15);
   bool _isProcessing = false;
 
@@ -34,19 +37,34 @@ class _QrisScreenState extends ConsumerState<QrisScreen> {
     _startTimer();
   }
 
-  void _loadTransaction() {
+  Future<void> _loadTransaction() async {
     final current = ref.read(currentTransactionProvider);
-    if (current != null && current.id == widget.transactionId) {
+    if (current != null && current.invoiceNumber == widget.transactionId) {
       _transaction = current;
     } else {
-      final repo = ref.read(paymentRepositoryProvider);
-      _transaction = repo.transactions.where((t) => t.id == widget.transactionId).firstOrNull;
+      try {
+        final status = await ref
+            .read(paymentRepositoryProvider)
+            .checkStatus(widget.transactionId);
+        _transaction = TransactionModel(
+          id: status.invoiceNumber,
+          invoiceNumber: status.invoiceNumber,
+          finalAmount: status.finalAmount,
+          paymentStatus: status.paymentStatus,
+          expiresAt: status.expiresAt ??
+              DateTime.now().add(const Duration(minutes: 15)),
+          createdAt: DateTime.now(),
+        );
+      } on ApiException {
+        _transaction = null;
+      }
     }
 
     if (_transaction != null) {
       final diff = _transaction!.expiresAt.difference(DateTime.now());
       _timeLeft = diff.isNegative ? Duration.zero : diff;
     }
+    if (mounted) setState(() {});
   }
 
   void _startTimer() {
@@ -61,21 +79,75 @@ class _QrisScreenState extends ConsumerState<QrisScreen> {
         });
       }
     });
+
+    // Polling ringan status invoice ke backend (mis. webhook Midtrans masuk).
+    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _pollStatus());
+  }
+
+  Future<void> _pollStatus() async {
+    final tx = _transaction;
+    if (tx == null || _isProcessing) return;
+
+    try {
+      final status =
+          await ref.read(paymentRepositoryProvider).checkStatus(tx.invoiceNumber);
+      if (!mounted) return;
+
+      if (status.isPaid) {
+        _timer?.cancel();
+        _pollTimer?.cancel();
+        await ref.read(authProvider.notifier).refreshProfile();
+        if (mounted) context.go('/payment-success');
+      } else if (status.paymentStatus == PaymentStatus.EXPIRED) {
+        _timer?.cancel();
+        setState(() => _timeLeft = Duration.zero);
+      }
+    } catch (_) {
+      // Abaikan error polling; timer akan mencoba lagi.
+    }
   }
 
   Future<void> _handlePaymentSuccess() async {
-    setState(() => _isProcessing = true);
-    final repo = ref.read(paymentRepositoryProvider);
-    final success = await repo.simulatePaymentSuccess(widget.transactionId);
+    final tx = _transaction;
+    if (tx == null) {
+      TaklukToast.show(context, 'Transaksi tidak ditemukan', isError: true);
+      return;
+    }
 
-    if (success && mounted) {
-      // Extend user subscription by 30 days
-      final validUntil = DateTime.now().add(const Duration(days: 30));
-      ref.read(authProvider.notifier).updateSubscription(validUntil);
+    setState(() => _isProcessing = true);
+
+    try {
+      final repo = ref.read(paymentRepositoryProvider);
+      await repo.simulatePaymentSuccess(
+        invoiceNumber: tx.invoiceNumber,
+        grossAmount: tx.finalAmount,
+      );
+      final status = await repo.checkStatus(tx.invoiceNumber);
+
+      if (!mounted) return;
+
+      if (status.isPaid) {
+        _timer?.cancel();
+        _pollTimer?.cancel();
+        await ref.read(authProvider.notifier).refreshProfile();
+        if (!mounted) return;
+        setState(() => _isProcessing = false);
+        context.go('/payment-success');
+        return;
+      }
 
       setState(() => _isProcessing = false);
-      context.go('/payment-success');
-    } else if (mounted) {
+      TaklukToast.show(
+        context,
+        'Pembayaran belum tercatat. Coba cek status lagi sebentar.',
+        isError: true,
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _isProcessing = false);
+      TaklukToast.show(context, error.message, isError: true);
+    } catch (_) {
+      if (!mounted) return;
       setState(() => _isProcessing = false);
       TaklukToast.show(context, 'Gagal memverifikasi transaksi', isError: true);
     }
@@ -91,6 +163,7 @@ class _QrisScreenState extends ConsumerState<QrisScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _pollTimer?.cancel();
     super.dispose();
   }
 
@@ -209,7 +282,7 @@ class _QrisScreenState extends ConsumerState<QrisScreen> {
                     ),
                   const SizedBox(height: 16),
                   Text(
-                    'Total Tagihan: Rp${_formatRupiah(_transaction?.finalAmount ?? 49000)}',
+                    'Total Tagihan: Rp${_formatRupiah(_transaction?.finalAmount ?? 25000)}',
                     style: const TextStyle(
                       fontFamily: 'Poppins',
                       fontSize: 16,

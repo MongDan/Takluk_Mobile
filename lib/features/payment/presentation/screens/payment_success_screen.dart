@@ -104,7 +104,7 @@ class _PaymentSuccessScreenState extends ConsumerState<PaymentSuccessScreen>
                     const SizedBox(height: 28),
 
                     const Text(
-                      'Pembayaran Berhasil! 🎉',
+                      'Pembayaran Berhasil!',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontFamily: 'Poppins',
