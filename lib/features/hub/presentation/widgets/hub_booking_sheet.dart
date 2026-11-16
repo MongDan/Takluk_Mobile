@@ -12,6 +12,7 @@ import '../../../../core/widgets/takluk_input.dart';
 import '../../../../core/widgets/takluk_toast.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/hub_repository.dart';
+import 'hub_seat_map.dart';
 
 /// Form reservasi layanan fisik Panam Academy Hub
 /// (`POST /api/hub/book`).
@@ -39,6 +40,20 @@ class _HubBookingSheetState extends ConsumerState<HubBookingSheet> {
   late University _university;
   DateTime? _preferredDate;
   bool _isSubmitting = false;
+  SeatItem? _selectedSeat;
+  bool _showSeatMap = false;
+
+  bool get _isSeatBookingService {
+    final name = widget.service.name.toLowerCase();
+    final cat = widget.service.category.toLowerCase();
+    final id = widget.service.id.toLowerCase();
+    return name.contains('study') ||
+        name.contains('kursi') ||
+        name.contains('space') ||
+        cat.contains('study') ||
+        cat.contains('space') ||
+        id.contains('study');
+  }
 
   @override
   void initState() {
@@ -47,6 +62,7 @@ class _HubBookingSheetState extends ConsumerState<HubBookingSheet> {
     _nameController = TextEditingController(text: user?.fullName ?? '');
     _whatsappController.text = user?.phoneNumber ?? '';
     _university = user?.university ?? University.UIN_SUSKA;
+    _showSeatMap = _isSeatBookingService;
   }
 
   @override
@@ -125,13 +141,19 @@ class _HubBookingSheetState extends ConsumerState<HubBookingSheet> {
 
     setState(() => _isSubmitting = true);
     try {
+      String notes = _notesController.text.trim();
+      if (_selectedSeat != null) {
+        final seatTag = '[Kursi: ${_selectedSeat!.label} (${_selectedSeat!.code})]';
+        notes = notes.isEmpty ? seatTag : '$seatTag $notes';
+      }
+
       final booking = await ref.read(hubRepositoryProvider).book(
             serviceId: widget.service.id,
             fullName: name,
             whatsapp: whatsapp,
             university: _university.value,
             preferredDate: DateFormat('yyyy-MM-dd').format(_preferredDate!),
-            notes: _notesController.text,
+            notes: notes,
           );
 
       if (!mounted) return;
@@ -285,6 +307,68 @@ class _HubBookingSheetState extends ConsumerState<HubBookingSheet> {
                   ),
                 ],
               ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          // Seat Map Selector untuk Quiet Study Space / Pilihan Kursi
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: TaklukColors.tint.withOpacity(0.5),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: TaklukColors.line),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(LucideIcons.armchair, size: 16, color: TaklukColors.primary),
+                        const SizedBox(width: 8),
+                        Text(
+                          _selectedSeat != null
+                              ? 'Kursi Terpilih: ${_selectedSeat!.label}'
+                              : 'Pilih Kursi Belajar (Lantai 2)',
+                          style: const TextStyle(
+                            fontFamily: 'Poppins',
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: TaklukColors.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    TextButton(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                      onPressed: () => setState(() => _showSeatMap = !_showSeatMap),
+                      child: Text(
+                        _showSeatMap ? 'Tutup Denah' : 'Lihat Denah',
+                        style: const TextStyle(
+                          fontFamily: 'Poppins',
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: TaklukColors.accent,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (_showSeatMap) ...[
+                  const SizedBox(height: 12),
+                  HubSeatMapSelector(
+                    initialSelectedSeatId: _selectedSeat?.id ?? 'A3',
+                    onSeatSelected: (seat) {
+                      setState(() => _selectedSeat = seat);
+                    },
+                  ),
+                ],
+              ],
             ),
           ),
           const SizedBox(height: 14),

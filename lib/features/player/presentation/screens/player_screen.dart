@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:video_player/video_player.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/constants/app_constants.dart';
@@ -12,6 +13,7 @@ import '../../../../core/domain/models/watch_history_model.dart';
 import '../../../../core/security/screen_security.dart';
 import '../../../../core/widgets/empty_state.dart';
 import '../../../../core/widgets/push_page_header.dart';
+import '../../../../core/widgets/takluk_math_view.dart';
 import '../../../../core/widgets/takluk_segmented_control.dart';
 import '../../../../core/widgets/takluk_toast.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -39,6 +41,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   bool _isPlaying = true;
   double _currentPositionSec = 0;
+  double _playbackSpeed = 1.0;
+  VideoPlayerController? _videoController;
   Timer? _playbackTimer;
   Timer? _watermarkTimer;
   Timer? _heartbeatTimer;
@@ -115,6 +119,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             await ref.read(videoPlaybackProvider(widget.videoId).future);
         if (!mounted) return;
         setState(() => _playback = playback);
+
+        // Inisialisasi video player HLS jika ada stream URL
+        if (playback.hlsStreamUrl.isNotEmpty) {
+          unawaited(_initVideoPlayer(playback.hlsStreamUrl, lastPosition));
+        }
       } on ApiException catch (error) {
         if (!mounted) return;
         if (error.isPaymentRequired) {
@@ -140,13 +149,90 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
   }
 
+  Future<void> _initVideoPlayer(String streamUrl, int startSec) async {
+    if (streamUrl.isEmpty) return;
+    try {
+      final uri = Uri.tryParse(streamUrl);
+      if (uri == null) return;
+      final controller = VideoPlayerController.networkUrl(uri);
+      await controller.initialize();
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      _videoController?.dispose();
+      _videoController = controller;
+
+      if (startSec > 0) {
+        await _videoController!.seekTo(Duration(seconds: startSec));
+      }
+      await _videoController!.setPlaybackSpeed(_playbackSpeed);
+      await _videoController!.play();
+
+      _videoController!.addListener(() {
+        if (!mounted || _videoController == null) return;
+        final value = _videoController!.value;
+        if (value.isInitialized) {
+          final pos = value.position.inSeconds.toDouble();
+          final isPlaying = value.isPlaying;
+          if ((pos - _currentPositionSec).abs() > 0.5 || isPlaying != _isPlaying) {
+            setState(() {
+              _currentPositionSec = pos;
+              _isPlaying = isPlaying;
+            });
+          }
+        }
+      });
+
+      setState(() {});
+    } catch (e) {
+      debugPrint('Video player HLS fallback ke simulated mode: $e');
+    }
+  }
+
+  void _togglePlayPause() {
+    if (_videoController != null && _videoController!.value.isInitialized) {
+      if (_videoController!.value.isPlaying) {
+        _videoController!.pause();
+      } else {
+        _videoController!.play();
+      }
+    } else {
+      setState(() => _isPlaying = !_isPlaying);
+    }
+  }
+
+  void _seekTo(double seconds) {
+    final maxSec = (_video?.durationSeconds ?? 0).toDouble();
+    final target = seconds.clamp(0.0, maxSec);
+    setState(() => _currentPositionSec = target);
+    if (_videoController != null && _videoController!.value.isInitialized) {
+      _videoController!.seekTo(Duration(seconds: target.toInt()));
+    }
+  }
+
+  void _skip(int deltaSec) {
+    _seekTo(_currentPositionSec + deltaSec);
+  }
+
+  void _cycleSpeed() {
+    const speeds = [1.0, 1.25, 1.5, 2.0];
+    final nextIdx = (speeds.indexOf(_playbackSpeed) + 1) % speeds.length;
+    final newSpeed = speeds[nextIdx];
+    setState(() => _playbackSpeed = newSpeed);
+    _videoController?.setPlaybackSpeed(newSpeed);
+  }
+
   void _startTimers() {
     _playbackTimer?.cancel();
     _watermarkTimer?.cancel();
     _heartbeatTimer?.cancel();
 
-    // Playback loop
+    // Playback loop (fallback jika controller HLS belum diinisialisasi)
     _playbackTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_videoController != null && _videoController!.value.isInitialized) {
+        return;
+      }
       if (_isPlaying && mounted) {
         final duration = _video?.durationSeconds ?? 0;
         setState(() {
@@ -232,6 +318,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _heartbeatTimer?.cancel();
     _captureSubscription?.cancel();
     _bookmarkAnimCtrl.dispose();
+    _videoController?.dispose();
     ScreenSecurity.disableSecureMode();
     super.dispose();
   }
@@ -304,38 +391,47 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             aspectRatio: 16 / 9,
             child: Stack(
               children: [
-                // Video Surface
-                Container(
-                  color: Colors.black,
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          _currentVideo.courseSymbol ?? '∫',
-                          style: TextStyle(
-                            fontSize: 48,
-                            color: Colors.white.withOpacity(0.18),
-                            fontWeight: FontWeight.w300,
+                // Video Surface: Real VideoPlayer if initialized, or gradient fallback
+                Positioned.fill(
+                  child: (_videoController != null && _videoController!.value.isInitialized)
+                      ? Center(
+                          child: AspectRatio(
+                            aspectRatio: _videoController!.value.aspectRatio,
+                            child: VideoPlayer(_videoController!),
+                          ),
+                        )
+                      : Container(
+                          color: Colors.black,
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  _currentVideo.courseSymbol ?? '∫',
+                                  style: TextStyle(
+                                    fontSize: 48,
+                                    color: Colors.white.withOpacity(0.18),
+                                    fontWeight: FontWeight.w300,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _isLocked
+                                      ? 'Materi khusus pelanggan Takluk'
+                                      : _playback == null
+                                          ? 'Menyiapkan Signed HLS Stream…'
+                                          : 'Streaming HLS Terenkripsi • aktif ${(_playback!.expiresInSeconds / 60).round()} menit',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontFamily: 'Poppins',
+                                    fontSize: 12,
+                                    color: Colors.white.withOpacity(0.5),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _isLocked
-                              ? 'Materi khusus pelanggan Takluk'
-                              : _playback == null
-                                  ? 'Menyiapkan Signed HLS Stream…'
-                                  : 'Streaming HLS Terenkripsi • aktif ${(_playback!.expiresInSeconds / 60).round()} menit',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontFamily: 'Poppins',
-                            fontSize: 12,
-                            color: Colors.white.withOpacity(0.5),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ),
 
                 // DRM Protection Badge
@@ -468,9 +564,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                               value: _currentPositionSec.clamp(0, _currentVideo.durationSeconds.toDouble()),
                               min: 0,
                               max: _currentVideo.durationSeconds.toDouble(),
-                              onChanged: (val) {
-                                setState(() => _currentPositionSec = val);
-                              },
+                              onChanged: (val) => _seekTo(val),
                             ),
                           ),
                           Row(
@@ -478,12 +572,33 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                             children: [
                               Row(
                                 children: [
+                                  // Skip -10s
                                   GestureDetector(
-                                    onTap: () => setState(() => _isPlaying = !_isPlaying),
+                                    onTap: () => _skip(-10),
+                                    child: const Icon(
+                                      LucideIcons.rotateCcw,
+                                      color: Colors.white,
+                                      size: 17,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  // Play / Pause
+                                  GestureDetector(
+                                    onTap: _togglePlayPause,
                                     child: Icon(
                                       _isPlaying ? LucideIcons.pause : LucideIcons.play,
                                       color: Colors.white,
                                       size: 20,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  // Skip +10s
+                                  GestureDetector(
+                                    onTap: () => _skip(10),
+                                    child: const Icon(
+                                      LucideIcons.rotateCw,
+                                      color: Colors.white,
+                                      size: 17,
                                     ),
                                   ),
                                   const SizedBox(width: 12),
@@ -499,17 +614,35 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                               ),
                               Row(
                                 children: [
-                                  Text(
-                                    '1.0x',
-                                    style: TextStyle(
-                                      fontFamily: 'Poppins',
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white.withOpacity(0.8),
+                                  GestureDetector(
+                                    onTap: _cycleSpeed,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white24,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        '${_playbackSpeed}x',
+                                        style: TextStyle(
+                                          fontFamily: 'Poppins',
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.white.withOpacity(0.9),
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                  const SizedBox(width: 14),
-                                  const Icon(LucideIcons.maximize, color: Colors.white, size: 16),
+                                  const SizedBox(width: 12),
+                                  GestureDetector(
+                                    onTap: () {
+                                      TaklukToast.show(
+                                        context,
+                                        'Mode layar penuh terproteksi FLAG_SECURE',
+                                      );
+                                    },
+                                    child: const Icon(LucideIcons.maximize, color: Colors.white, size: 16),
+                                  ),
                                 ],
                               ),
                             ],
@@ -642,10 +775,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
         return GestureDetector(
           onTap: () {
-            setState(() {
-              _currentPositionSec = chapter.startSecond.toDouble();
-              _isPlaying = true;
-            });
+            _seekTo(chapter.startSecond.toDouble());
+            if (!_isPlaying) _togglePlayPause();
           },
           child: Container(
             margin: const EdgeInsets.only(bottom: 8),
@@ -705,14 +836,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           borderRadius: TaklukRadius.cardBR,
           border: Border.all(color: TaklukColors.line),
         ),
-        child: MarkdownBody(
-          data: markdown,
-          styleSheet: MarkdownStyleSheet(
-            h1: const TextStyle(fontFamily: 'Poppins', fontSize: 18, fontWeight: FontWeight.w700, color: TaklukColors.ink),
-            h2: const TextStyle(fontFamily: 'Poppins', fontSize: 16, fontWeight: FontWeight.w700, color: TaklukColors.ink),
-            h3: const TextStyle(fontFamily: 'Poppins', fontSize: 14, fontWeight: FontWeight.w600, color: TaklukColors.ink),
-            p: const TextStyle(fontFamily: 'Poppins', fontSize: 13, color: TaklukColors.ink, height: 1.5),
-            code: const TextStyle(fontFamily: 'monospace', fontSize: 12, backgroundColor: TaklukColors.tint),
+        child: TaklukMathView(
+          text: markdown,
+          textStyle: const TextStyle(
+            fontFamily: 'Poppins',
+            fontSize: 13,
+            color: TaklukColors.ink,
+            height: 1.6,
           ),
         ),
       ),

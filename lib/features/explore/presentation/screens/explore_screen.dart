@@ -14,6 +14,7 @@ import '../../../../core/widgets/takluk_chip.dart';
 import '../../../../core/widgets/takluk_toast.dart';
 import '../../../../core/widgets/video_row_card.dart';
 import '../../../../core/widgets/empty_state.dart';
+import '../../../../core/widgets/takluk_shimmer.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../home/data/progress_repository.dart';
 import '../../../home/presentation/providers/home_provider.dart';
@@ -216,7 +217,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             const SizedBox(height: 12),
             Expanded(
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? TaklukShimmer.videoRows(count: 6)
                   : _error != null
                       ? EmptyState(
                           icon: LucideIcons.wifiOff,

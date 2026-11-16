@@ -9,6 +9,7 @@ import '../../../../core/network/api_exception.dart';
 import '../../../../core/widgets/empty_state.dart';
 import '../../../../core/widgets/push_page_header.dart';
 import '../../../../core/widgets/takluk_button.dart';
+import '../../../../core/widgets/takluk_math_view.dart';
 import '../../../../core/widgets/takluk_toast.dart';
 import '../../data/archive_repository.dart';
 
@@ -249,16 +250,14 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                 borderRadius: TaklukRadius.cardBR,
                 border: Border.all(color: TaklukColors.line),
               ),
-              child: MarkdownBody(
-                data: q.questionMarkdown,
-                styleSheet: MarkdownStyleSheet(
-                  p: const TextStyle(
-                    fontFamily: 'Poppins',
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: TaklukColors.ink,
-                    height: 1.5,
-                  ),
+              child: TaklukMathView(
+                text: q.questionMarkdown,
+                textStyle: const TextStyle(
+                  fontFamily: 'Poppins',
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: TaklukColors.ink,
+                  height: 1.5,
                 ),
               ),
             ),
@@ -322,9 +321,9 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                       ),
                       const SizedBox(width: 14),
                       Expanded(
-                        child: Text(
-                          opt.text,
-                          style: TextStyle(
+                        child: TaklukMathView(
+                          text: opt.text,
+                          textStyle: TextStyle(
                             fontFamily: 'Poppins',
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
@@ -379,15 +378,13 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                       ],
                     ),
                     const SizedBox(height: 10),
-                    MarkdownBody(
-                      data: q.explanationMd ?? '',
-                      styleSheet: MarkdownStyleSheet(
-                        p: const TextStyle(
-                          fontFamily: 'Poppins',
-                          fontSize: 13,
-                          color: TaklukColors.ink,
-                          height: 1.5,
-                        ),
+                    TaklukMathView(
+                      text: q.explanationMd ?? '',
+                      textStyle: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 13,
+                        color: TaklukColors.ink,
+                        height: 1.5,
                       ),
                     ),
                     if (q.relatedVideoId != null) ...[

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../../../../core/config/app_config.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/widgets/takluk_shimmer.dart';
 import '../../../../core/widgets/video_row_card.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../hub/presentation/widgets/hub_booking_sheet.dart';
@@ -204,7 +205,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                   ),
                 ),
-                loading: () => const SizedBox(height: 120, child: Center(child: CircularProgressIndicator())),
+                loading: () => TaklukShimmer.courseCards(),
                 error: (e, _) => const SizedBox.shrink(),
               ),
               const SizedBox(height: 24),
@@ -232,7 +233,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                   )).toList(),
                 ),
-                loading: () => const SizedBox(height: 80, child: Center(child: CircularProgressIndicator())),
+                loading: () => TaklukShimmer.videoRows(count: 3),
                 error: (e, _) => const SizedBox.shrink(),
               ),
               const SizedBox(height: 20),
@@ -265,10 +266,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     },
                   ),
                 ),
-                loading: () => const SizedBox(
-                  height: 120,
-                  child: Center(child: CircularProgressIndicator()),
-                ),
+                loading: () => TaklukShimmer.card(height: 140),
                 error: (error, _) => Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Text(

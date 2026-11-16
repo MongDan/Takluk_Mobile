@@ -82,7 +82,29 @@ Catatan:
   `NODE_ENV=development`.
 - Harga langganan mengikuti backend: **Rp25.000/bulan**.
 
-## 5. Struktur Singkat
+## 5. Fitur Lanjutan (Phase 2 & Player VOD)
+
+1. **Pemutar Video HLS & VOD Asli (`player_screen.dart`):**
+   - Integrasi `VideoPlayerController` (`video_player`) untuk memutar stream HLS `.m3u8` dari Cloudflare Stream / signed URL.
+   - Kontrol pemutar lengkap: slider scrubbing, lompat bab, pintasan mundur/maju 10 detik (`-10s` / `+10s`), serta pengatur kecepatan putar (1.0x, 1.25x, 1.5x, 2.0x).
+   - Fallback otomatis ke mode simulasi jika berjalan offline atau belum ada URL stream aktif.
+   - Tetap mempertahankan lapisan keamanan: **FLAG_SECURE**, pemblokiran layar saat rekam layar terdeteksi, watermark identitas mengambang acak tiap 4 detik, dan sinkronisasi denyut tonton (heartbeat 30s).
+
+2. **Denah Interaktif Kursi Panam Hub (`hub_seat_map.dart`):**
+   - Denah visual Lantai 2 Quiet Study Space Panam Hub:
+     - **Zona Meja Fokus (A1-A6, B1-B6)**: Meja colokan, lampu LED, dan partisi privasi.
+     - **Booth Kedap Suara (C1-C4)**: Private acoustic booth untuk bimbingan skripsi / ujian online.
+     - **Pod Diskusi (D1-D2)**: Sofa meja bundar kelompok (2-4 mahasiswa).
+   - Pemilihan kursi interaktif terhubung langsung ke form reservasi (`HubBookingSheet`), otomatis mencatat nomor kursi ke data reservasi.
+
+3. **LaTeX Math Rendering (`takluk_math_view.dart`):**
+   - Rendering rumus matematika/kalkulus menggunakan `flutter_math_fork` (`$formula$` inline dan `$$formula$$` block).
+   - Diterapkan pada pertanyaan, opsi pilihan ganda, dan pembahasan kuis di `quiz_screen.dart`, serta tab "Catatan & Rumus" di `player_screen.dart`.
+
+4. **Skeleton Shimmer Loading (`takluk_shimmer.dart`):**
+   - Animasi shimmer skeleton loading menggunakan palet warna Takluk pada kartu mata kuliah, daftar video, dan banner layanan saat memuat data.
+
+## 6. Struktur Singkat
 
 ```
 lib/
@@ -103,7 +125,7 @@ lib/
     └── hub/                          # Panam Academy Hub
 ```
 
-## 6. Pengujian
+## 7. Pengujian
 
 ```bash
 flutter analyze

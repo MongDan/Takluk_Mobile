@@ -32,6 +32,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   int _regSemester = 3;
 
   final _otpController = TextEditingController();
+  final _otpFocusNode = FocusNode();
   String? _otpError;
   String _currentEmail = '';
   bool _isRegistering = false;
@@ -94,6 +95,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         _otpController.clear();
         _otpError = null;
       });
+      _otpFocusNode.requestFocus();
       TaklukToast.show(context, 'Kode OTP 6 digit telah dikirim ke $_currentEmail');
     } else if (mounted) {
       TaklukToast.show(
@@ -135,6 +137,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     _regNimController.dispose();
     _regEmailController.dispose();
     _otpController.dispose();
+    _otpFocusNode.dispose();
     super.dispose();
   }
 
@@ -273,7 +276,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       children: [
         TaklukInput(
           label: 'Email Terdaftar',
-          hint: 'aisyah@demo.takluk.id',
+          hint: 'aisyah@takluktest.dev',
           controller: _loginEmailController,
           keyboardType: TextInputType.emailAddress,
           errorText: _loginEmailError,
@@ -411,130 +414,217 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             _otpController.clear();
             _otpError = null;
           }),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              Icon(LucideIcons.arrowLeft, size: 18, color: TaklukColors.primary),
-              SizedBox(width: 6),
-              Text(
-                'Ganti Email',
-                style: TextStyle(
-                  fontFamily: 'Poppins',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: TaklukColors.primary,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(LucideIcons.arrowLeft, size: 18, color: TaklukColors.primary),
+                SizedBox(width: 6),
+                Text(
+                  'Ganti Email',
+                  style: TextStyle(
+                    fontFamily: 'Poppins',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: TaklukColors.primary,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 18),
         const Text(
           'Verifikasi Email OTP',
           style: TextStyle(
             fontFamily: 'Poppins',
-            fontSize: 20,
+            fontSize: 22,
             fontWeight: FontWeight.w700,
             color: TaklukColors.ink,
           ),
         ),
         const SizedBox(height: 6),
-        Text(
-          'Kode 6 digit telah dikirim ke:\n$_currentEmail',
-          style: const TextStyle(
-            fontFamily: 'Poppins',
-            fontSize: 14,
-            color: TaklukColors.muted,
-            height: 1.4,
+        RichText(
+          text: TextSpan(
+            style: const TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 14,
+              color: TaklukColors.muted,
+              height: 1.5,
+            ),
+            children: [
+              const TextSpan(text: 'Masukkan 6 digit kode yang dikirim ke:\n'),
+              TextSpan(
+                text: _currentEmail,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: TaklukColors.ink,
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 24),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: List.generate(6, (index) {
-            final hasChar = _otpController.text.length > index;
-            final isCurrent = _otpController.text.length == index;
-            return Container(
-              width: 46,
-              height: 54,
-              decoration: BoxDecoration(
-                color: TaklukColors.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: _otpError != null
-                      ? TaklukColors.error
-                      : (isCurrent
-                          ? TaklukColors.primary
-                          : (hasChar ? TaklukColors.primary.withOpacity(0.5) : TaklukColors.line)),
-                  width: isCurrent ? 2 : 1.2,
-                ),
-                boxShadow: isCurrent
-                    ? [
-                        BoxShadow(
-                          color: TaklukColors.primary.withOpacity(0.12),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ]
-                    : null,
-              ),
-              child: Center(
-                child: Text(
-                  hasChar ? _otpController.text[index] : '',
-                  style: const TextStyle(
-                    fontFamily: 'Poppins',
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    color: TaklukColors.ink,
-                  ),
-                ),
-              ),
-            );
-          }),
-        ),
-        SizedBox(
-          height: 0,
-          child: TextField(
-            controller: _otpController,
-            autofocus: true,
-            keyboardType: TextInputType.number,
-            maxLength: 6,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            onChanged: (v) {
-              setState(() => _otpError = null);
-              if (v.length == 6) {
-                _handleVerifyOtp();
-              }
-            },
-            decoration: const InputDecoration(counterText: ''),
-          ),
-        ),
-        if (_otpError != null) ...[
-          const SizedBox(height: 12),
-          Row(
+
+        // OTP 6 Digit Input Box (Responsive Stack)
+        GestureDetector(
+          onTap: () => _otpFocusNode.requestFocus(),
+          child: Stack(
+            alignment: Alignment.center,
             children: [
-              const Icon(LucideIcons.alertCircle, size: 14, color: TaklukColors.error),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  _otpError!,
-                  style: const TextStyle(
-                    fontFamily: 'Poppins',
-                    fontSize: 12,
-                    color: TaklukColors.error,
+              // Visual Box 6 Digit
+              Row(
+                children: List.generate(6, (index) {
+                  final hasChar = _otpController.text.length > index;
+                  final isCurrent = _otpController.text.length == index;
+                  return Expanded(
+                    child: Container(
+                      height: 56,
+                      margin: EdgeInsets.only(right: index < 5 ? 8 : 0),
+                      decoration: BoxDecoration(
+                        color: hasChar
+                            ? TaklukColors.tint.withOpacity(0.35)
+                            : TaklukColors.surface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _otpError != null
+                              ? TaklukColors.error
+                              : (isCurrent
+                                  ? TaklukColors.primary
+                                  : (hasChar
+                                      ? TaklukColors.primary.withOpacity(0.5)
+                                      : TaklukColors.line)),
+                          width: isCurrent ? 2 : 1.2,
+                        ),
+                        boxShadow: isCurrent
+                            ? [
+                                BoxShadow(
+                                  color: TaklukColors.primary.withOpacity(0.15),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ]
+                            : null,
+                      ),
+                      child: Center(
+                        child: Text(
+                          hasChar ? _otpController.text[index] : '',
+                          style: const TextStyle(
+                            fontFamily: 'Poppins',
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            color: TaklukColors.ink,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+
+              // Invisible overlay TextField to capture keyboard input anywhere in the boxes
+              Positioned.fill(
+                child: Opacity(
+                  opacity: 0.0,
+                  child: TextField(
+                    focusNode: _otpFocusNode,
+                    controller: _otpController,
+                    autofocus: true,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    cursorColor: Colors.transparent,
+                    style: const TextStyle(color: Colors.transparent, fontSize: 1),
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    enableInteractiveSelection: false,
+                    onChanged: (v) {
+                      setState(() => _otpError = null);
+                      if (v.length == 6) {
+                        _handleVerifyOtp();
+                      }
+                    },
+                    decoration: const InputDecoration(
+                      counterText: '',
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                    ),
                   ),
                 ),
               ),
             ],
           ),
+        ),
+
+        if (_otpError != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: TaklukColors.error.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: TaklukColors.error.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(LucideIcons.alertCircle, size: 16, color: TaklukColors.error),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _otpError!,
+                    style: const TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: TaklukColors.error,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
+
         const SizedBox(height: 24),
         TaklukButton(
           label: 'Verifikasi & Masuk',
           onPressed: authState.otpVerifying ? null : _handleVerifyOtp,
           isLoading: authState.otpVerifying,
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
+
+        // Kirim ulang OTP
+        Center(
+          child: TextButton(
+            onPressed: () async {
+              final success = await ref
+                  .read(authProvider.notifier)
+                  .requestOtp(_currentEmail);
+              if (!context.mounted) return;
+              if (success) {
+                TaklukToast.show(context, 'Kode OTP baru telah dikirimkan!');
+              } else {
+                TaklukToast.show(
+                  context,
+                  ref.read(authProvider).errorMessage ?? 'Gagal mengirim ulang OTP',
+                  isError: true,
+                );
+              }
+            },
+            child: const Text(
+              'Belum menerima kode? Kirim Ulang',
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: TaklukColors.primary,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+
         Center(
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
