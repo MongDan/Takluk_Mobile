@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -40,6 +42,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   String? _regNameError;
   String? _regNimError;
   String? _regEmailError;
+
+  // OTP input (inkremental tanpa TextField terlihat)
+  final FocusNode _otpFocusNode = FocusNode();
+  Timer? _otpCooldownTimer;
+  int _otpCooldown = 0;
 
   bool _validateLogin() {
     final email = _loginEmailController.text.trim();
@@ -87,18 +94,76 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       _isRegistering = true;
     }
 
-    final success = await ref.read(authProvider.notifier).requestOtp(_currentEmail);
+    final success = await ref
+        .read(authProvider.notifier)
+        .requestOtp(_currentEmail);
     if (success && mounted) {
       setState(() {
         _showOtp = true;
         _otpController.clear();
         _otpError = null;
       });
-      TaklukToast.show(context, 'Kode OTP 6 digit telah dikirim ke $_currentEmail');
+      _startOtpCooldown();
+      TaklukToast.show(
+        context,
+        'Kode OTP terkirim ke $_currentEmail',
+        icon: LucideIcons.mailCheck,
+      );
     } else if (mounted) {
       TaklukToast.show(
         context,
         ref.read(authProvider).errorMessage ?? 'Gagal mengirim kode OTP',
+        isError: true,
+      );
+    }
+  }
+
+  void _startOtpCooldown() {
+    _otpCooldownTimer?.cancel();
+    setState(() => _otpCooldown = 60);
+    _otpCooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        if (_otpCooldown <= 1) {
+          timer.cancel();
+          _otpCooldown = 0;
+        } else {
+          _otpCooldown--;
+        }
+      });
+    });
+  }
+
+  String _formatCooldown() {
+    final min = _otpCooldown ~/ 60;
+    final sec = _otpCooldown % 60;
+    return '$min:${sec.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _resendOtp() async {
+    if (_otpCooldown > 0) return;
+    final success = await ref
+        .read(authProvider.notifier)
+        .requestOtp(_currentEmail);
+    if (!mounted) return;
+    if (success) {
+      setState(() {
+        _otpController.clear();
+        _otpError = null;
+      });
+      _startOtpCooldown();
+      TaklukToast.show(
+        context,
+        'Kode OTP baru terkirim ke $_currentEmail',
+        icon: LucideIcons.mailCheck,
+      );
+    } else {
+      TaklukToast.show(
+        context,
+        ref.read(authProvider).errorMessage ?? 'Gagal mengirim ulang OTP',
         isError: true,
       );
     }
@@ -110,26 +175,33 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       return;
     }
 
-    final success = await ref.read(authProvider.notifier).verifyOtp(
-      email: _currentEmail,
-      otpCode: _otpController.text,
-      fullName: _isRegistering ? _regNameController.text.trim() : null,
-      nim: _isRegistering ? _regNimController.text.trim() : null,
-      university: _isRegistering ? _regUniversity.value : null,
-      semester: _isRegistering ? _regSemester : null,
-    );
+    final success = await ref
+        .read(authProvider.notifier)
+        .verifyOtp(
+          email: _currentEmail,
+          otpCode: _otpController.text,
+          fullName: _isRegistering ? _regNameController.text.trim() : null,
+          nim: _isRegistering ? _regNimController.text.trim() : null,
+          university: _isRegistering ? _regUniversity.value : null,
+          semester: _isRegistering ? _regSemester : null,
+        );
 
     if (success && mounted) {
       context.go('/home');
     } else if (mounted) {
-      setState(() => _otpError =
-          ref.read(authProvider).errorMessage ?? 'Kode OTP salah. Periksa kembali.');
+      setState(
+        () => _otpError =
+            ref.read(authProvider).errorMessage ??
+            'Kode OTP salah. Periksa kembali.',
+      );
       HapticFeedback.heavyImpact();
     }
   }
 
   @override
   void dispose() {
+    _otpFocusNode.dispose();
+    _otpCooldownTimer?.cancel();
     _loginEmailController.dispose();
     _regNameController.dispose();
     _regNimController.dispose();
@@ -190,73 +262,21 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     const SizedBox(height: 20),
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 200),
-                      child: _tabIndex == 0 ? _buildLoginForm() : _buildRegisterForm(),
+                      child: _tabIndex == 0
+                          ? _buildLoginForm()
+                          : _buildRegisterForm(),
                     ),
                     const SizedBox(height: 20),
                     TaklukButton(
-                      label: _tabIndex == 0 ? 'Kirim Kode OTP' : 'Daftar & Kirim OTP',
-                      onPressed: authState.status == AuthStatus.loading ? null : _handleSubmit,
+                      label: _tabIndex == 0
+                          ? 'Kirim Kode OTP'
+                          : 'Daftar & Kirim OTP',
+                      onPressed: authState.status == AuthStatus.loading
+                          ? null
+                          : _handleSubmit,
                       isLoading: authState.status == AuthStatus.loading,
                     ),
-                    const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        const Expanded(child: Divider(color: TaklukColors.line)),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          child: Text(
-                            'atau coba langsung',
-                            style: TextStyle(
-                              fontFamily: 'Poppins',
-                              fontSize: 12,
-                              color: TaklukColors.muted.withOpacity(0.8),
-                            ),
-                          ),
-                        ),
-                        const Expanded(child: Divider(color: TaklukColors.line)),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    TaklukButton(
-                      label: 'Masuk dengan Akun Demo',
-                      variant: ButtonVariant.secondary,
-                      icon: LucideIcons.userCheck,
-                      onPressed: () async {
-                        final success =
-                            await ref.read(authProvider.notifier).loginAsDemo();
-                        if (!context.mounted) return;
-                        if (success) {
-                          context.go('/home');
-                        } else {
-                          TaklukToast.show(
-                            context,
-                            ref.read(authProvider).errorMessage ??
-                                'Gagal masuk dengan akun demo',
-                            isError: true,
-                          );
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: TaklukColors.tintWarm,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Text(
-                          'Aisyah Putri • NIM 12250312345 • UIN Suska • Smtr 3',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontFamily: 'Poppins',
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                            color: TaklukColors.ink,
-                          ),
-                        ),
-                      ),
-                    ),
+                    const SizedBox(height: 8),
                   ],
                 ],
               ),
@@ -277,7 +297,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           controller: _loginEmailController,
           keyboardType: TextInputType.emailAddress,
           errorText: _loginEmailError,
-          suffixIcon: const Icon(LucideIcons.mail, size: 18, color: TaklukColors.muted),
+          suffixIcon: const Icon(
+            LucideIcons.mail,
+            size: 18,
+            color: TaklukColors.muted,
+          ),
         ),
       ],
     );
@@ -289,10 +313,14 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       children: [
         TaklukInput(
           label: 'Nama Lengkap',
-          hint: 'Aisyah Putri',
+          hint: 'Nama sesuai KTM',
           controller: _regNameController,
           errorText: _regNameError,
-          suffixIcon: const Icon(LucideIcons.user, size: 18, color: TaklukColors.muted),
+          suffixIcon: const Icon(
+            LucideIcons.user,
+            size: 18,
+            color: TaklukColors.muted,
+          ),
         ),
         const SizedBox(height: 14),
         TaklukInput(
@@ -301,7 +329,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           controller: _regNimController,
           keyboardType: TextInputType.number,
           errorText: _regNimError,
-          suffixIcon: const Icon(LucideIcons.creditCard, size: 18, color: TaklukColors.muted),
+          suffixIcon: const Icon(
+            LucideIcons.creditCard,
+            size: 18,
+            color: TaklukColors.muted,
+          ),
         ),
         const SizedBox(height: 14),
         Column(
@@ -333,16 +365,22 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     fontSize: 14,
                     color: TaklukColors.ink,
                   ),
-                  items: [
-                    University.UNRI,
-                    University.UIN_SUSKA,
-                    University.PCR,
-                    University.UIR,
-                    University.UMRI,
-                    University.LAINNYA,
-                  ]
-                      .map((u) => DropdownMenuItem(value: u, child: Text(u.label)))
-                      .toList(),
+                  items:
+                      [
+                            University.UNRI,
+                            University.UIN_SUSKA,
+                            University.PCR,
+                            University.UIR,
+                            University.UMRI,
+                            University.LAINNYA,
+                          ]
+                          .map(
+                            (u) => DropdownMenuItem(
+                              value: u,
+                              child: Text(u.label),
+                            ),
+                          )
+                          .toList(),
                   onChanged: (v) => setState(() => _regUniversity = v!),
                 ),
               ),
@@ -380,7 +418,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     color: TaklukColors.ink,
                   ),
                   items: List.generate(8, (i) => i + 1)
-                      .map((s) => DropdownMenuItem(value: s, child: Text('Semester $s')))
+                      .map(
+                        (s) => DropdownMenuItem(
+                          value: s,
+                          child: Text('Semester $s'),
+                        ),
+                      )
                       .toList(),
                   onChanged: (v) => setState(() => _regSemester = v!),
                 ),
@@ -395,7 +438,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           controller: _regEmailController,
           keyboardType: TextInputType.emailAddress,
           errorText: _regEmailError,
-          suffixIcon: const Icon(LucideIcons.mail, size: 18, color: TaklukColors.muted),
+          suffixIcon: const Icon(
+            LucideIcons.mail,
+            size: 18,
+            color: TaklukColors.muted,
+          ),
         ),
       ],
     );
@@ -414,7 +461,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: const [
-              Icon(LucideIcons.arrowLeft, size: 18, color: TaklukColors.primary),
+              Icon(
+                LucideIcons.arrowLeft,
+                size: 18,
+                color: TaklukColors.primary,
+              ),
               SizedBox(width: 6),
               Text(
                 'Ganti Email',
@@ -438,94 +489,244 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             color: TaklukColors.ink,
           ),
         ),
-        const SizedBox(height: 6),
-        Text(
-          'Kode 6 digit telah dikirim ke:\n$_currentEmail',
-          style: const TextStyle(
-            fontFamily: 'Poppins',
-            fontSize: 14,
-            color: TaklukColors.muted,
-            height: 1.4,
+        const SizedBox(height: 14),
+
+        // Kartu notifikasi email terkirim
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: TaklukColors.success.withOpacity(0.06),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: TaklukColors.success.withOpacity(0.25)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: TaklukColors.success.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  LucideIcons.mailCheck,
+                  color: TaklukColors.success,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Kode OTP terkirim',
+                      style: TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: TaklukColors.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Cek inbox atau folder spam untuk kode 6 digit dari Takluk via $_currentEmail',
+                      style: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 12,
+                        color: TaklukColors.muted,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 24),
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: List.generate(6, (index) {
             final hasChar = _otpController.text.length > index;
             final isCurrent = _otpController.text.length == index;
-            return Container(
-              width: 46,
-              height: 54,
-              decoration: BoxDecoration(
-                color: TaklukColors.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: _otpError != null
-                      ? TaklukColors.error
-                      : (isCurrent
-                          ? TaklukColors.primary
-                          : (hasChar ? TaklukColors.primary.withOpacity(0.5) : TaklukColors.line)),
-                  width: isCurrent ? 2 : 1.2,
-                ),
-                boxShadow: isCurrent
-                    ? [
-                        BoxShadow(
-                          color: TaklukColors.primary.withOpacity(0.12),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
+            return Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(right: index == 5 ? 0 : 8),
+                child: GestureDetector(
+                  onTap: () => _otpFocusNode.requestFocus(),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    height: 54,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: TaklukColors.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _otpError != null
+                            ? TaklukColors.error
+                            : (isCurrent
+                                  ? TaklukColors.primary
+                                  : (hasChar
+                                        ? TaklukColors.primary.withOpacity(0.45)
+                                        : TaklukColors.line)),
+                        width: isCurrent ? 2 : 1.2,
+                      ),
+                      boxShadow: isCurrent
+                          ? [
+                              BoxShadow(
+                                color: TaklukColors.primary.withOpacity(0.14),
+                                blurRadius: 10,
+                                offset: const Offset(0, 3),
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Text(
+                          hasChar ? _otpController.text[index] : '',
+                          style: const TextStyle(
+                            fontFamily: 'Poppins',
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            color: TaklukColors.ink,
+                          ),
                         ),
-                      ]
-                    : null,
-              ),
-              child: Center(
-                child: Text(
-                  hasChar ? _otpController.text[index] : '',
-                  style: const TextStyle(
-                    fontFamily: 'Poppins',
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    color: TaklukColors.ink,
+                        if (isCurrent && !hasChar && _otpError == null)
+                          Positioned(
+                            bottom: 10,
+                            child: Container(
+                              width: 14,
+                              height: 2,
+                              decoration: BoxDecoration(
+                                color: TaklukColors.primary.withOpacity(0.8),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             );
           }),
         ),
+        // TextField tersembunyi penampung input (font & kursor transparan)
         SizedBox(
-          height: 0,
-          child: TextField(
-            controller: _otpController,
-            autofocus: true,
-            keyboardType: TextInputType.number,
-            maxLength: 6,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            onChanged: (v) {
-              setState(() => _otpError = null);
-              if (v.length == 6) {
-                _handleVerifyOtp();
-              }
-            },
-            decoration: const InputDecoration(counterText: ''),
+          height: 1,
+          child: Opacity(
+            opacity: 0,
+            child: TextField(
+              controller: _otpController,
+              focusNode: _otpFocusNode,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              showCursor: false,
+              cursorColor: Colors.transparent,
+              enableInteractiveSelection: false,
+              style: const TextStyle(fontSize: 1, color: Colors.transparent),
+              onChanged: (v) {
+                setState(() => _otpError = null);
+                if (v.length == 6) {
+                  _handleVerifyOtp();
+                }
+              },
+              decoration: const InputDecoration.collapsed(hintText: ''),
+            ),
           ),
         ),
+        const SizedBox(height: 18),
+
+        // Kirim ulang kode OTP
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'Belum menerima kode?',
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 12,
+                color: TaklukColors.muted.withOpacity(0.9),
+              ),
+            ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: _otpCooldown > 0 ? null : _resendOtp,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_otpCooldown > 0) ...[
+                    const Icon(
+                      LucideIcons.timer,
+                      size: 13,
+                      color: TaklukColors.muted,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Kirim ulang dalam ${_formatCooldown()}',
+                      style: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: TaklukColors.muted,
+                      ),
+                    ),
+                  ] else ...[
+                    const Icon(
+                      LucideIcons.refreshCw,
+                      size: 13,
+                      color: TaklukColors.primary,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Kirim Ulang',
+                      style: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: TaklukColors.primary,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+
         if (_otpError != null) ...[
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              const Icon(LucideIcons.alertCircle, size: 14, color: TaklukColors.error),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  _otpError!,
-                  style: const TextStyle(
-                    fontFamily: 'Poppins',
-                    fontSize: 12,
-                    color: TaklukColors.error,
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: TaklukColors.error.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: TaklukColors.error.withOpacity(0.2)),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  LucideIcons.alertCircle,
+                  size: 14,
+                  color: TaklukColors.error,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _otpError!,
+                    style: const TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 12,
+                      color: TaklukColors.error,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
         const SizedBox(height: 24),
@@ -539,17 +740,21 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
-              color: TaklukColors.tintWarm,
+              color: TaklukColors.tint,
               borderRadius: BorderRadius.circular(10),
             ),
             child: const Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(LucideIcons.lightbulb, size: 14, color: TaklukColors.accent),
+                Icon(
+                  LucideIcons.shieldCheck,
+                  size: 14,
+                  color: TaklukColors.primary,
+                ),
                 SizedBox(width: 6),
                 Flexible(
                   child: Text(
-                    'Demo OTP: 123456 (Pengikatan Perangkat Otomatis)',
+                    'Kode OTP berlaku 5 menit & terikat pada perangkat ini',
                     style: TextStyle(
                       fontFamily: 'Poppins',
                       fontSize: 12,
@@ -566,4 +771,3 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     );
   }
 }
-

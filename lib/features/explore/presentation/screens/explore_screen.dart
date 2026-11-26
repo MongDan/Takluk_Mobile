@@ -70,7 +70,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     }
   }
 
-  Future<void> _toggleBookmark(VideoModel video, bool currentlyBookmarked) async {
+  Future<void> _toggleBookmark(
+    VideoModel video,
+    bool currentlyBookmarked,
+  ) async {
     try {
       await ref
           .read(progressRepositoryProvider)
@@ -80,7 +83,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       if (mounted) {
         TaklukToast.show(
           context,
-          currentlyBookmarked ? 'Dihapus dari Bookmark' : 'Disimpan ke Bookmark',
+          currentlyBookmarked
+              ? 'Dihapus dari Bookmark'
+              : 'Disimpan ke Bookmark',
         );
       }
     } on ApiException catch (error) {
@@ -132,7 +137,11 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               child: TextField(
                 controller: _searchController,
                 onChanged: _onQueryChanged,
-                style: const TextStyle(fontFamily: 'Poppins', fontSize: 14, color: TaklukColors.ink),
+                style: const TextStyle(
+                  fontFamily: 'Poppins',
+                  fontSize: 14,
+                  color: TaklukColors.ink,
+                ),
                 decoration: InputDecoration(
                   hintText: 'Cari materi, dosen, atau kampus (UNRI, UIN)…',
                   hintStyle: TextStyle(
@@ -140,7 +149,11 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                     fontSize: 14,
                     color: TaklukColors.muted.withOpacity(0.6),
                   ),
-                  prefixIcon: const Icon(LucideIcons.search, size: 18, color: TaklukColors.muted),
+                  prefixIcon: const Icon(
+                    LucideIcons.search,
+                    size: 18,
+                    color: TaklukColors.muted,
+                  ),
                   suffixIcon: _searchController.text.isNotEmpty
                       ? IconButton(
                           icon: const Icon(LucideIcons.x, size: 16),
@@ -169,17 +182,21 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                     },
                   ),
                   const SizedBox(width: 8),
-                  ...courses.map((c) => Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: TaklukChip(
-                      label: '${c.symbol} ${c.title}',
-                      isActive: _selectedCourseId == c.id,
-                      onTap: () {
-                        _selectedCourseId = _selectedCourseId == c.id ? null : c.id;
-                        _performSearch();
-                      },
+                  ...courses.map(
+                    (c) => Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: TaklukChip(
+                        label: '${c.symbol} ${c.title}',
+                        isActive: _selectedCourseId == c.id,
+                        onTap: () {
+                          _selectedCourseId = _selectedCourseId == c.id
+                              ? null
+                              : c.id;
+                          _performSearch();
+                        },
+                      ),
                     ),
-                  )),
+                  ),
                 ],
               ),
             ),
@@ -199,17 +216,19 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                     },
                   ),
                   const SizedBox(width: 8),
-                  ...VideoCategory.values.map((c) => Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: TaklukChip(
-                      label: c.label,
-                      isActive: _selectedCategory == c,
-                      onTap: () {
-                        _selectedCategory = _selectedCategory == c ? null : c;
-                        _performSearch();
-                      },
+                  ...VideoCategory.values.map(
+                    (c) => Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: TaklukChip(
+                        label: c.label,
+                        isActive: _selectedCategory == c,
+                        onTap: () {
+                          _selectedCategory = _selectedCategory == c ? null : c;
+                          _performSearch();
+                        },
+                      ),
                     ),
-                  )),
+                  ),
                 ],
               ),
             ),
@@ -218,18 +237,20 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _error != null
-                      ? EmptyState(
-                          icon: LucideIcons.wifiOff,
-                          title: 'Gagal Memuat Materi',
-                          subtitle: _error!,
-                          actionLabel: 'Coba Lagi',
-                          onAction: _performSearch,
-                        )
-                      : _results.isEmpty
                   ? EmptyState(
+                      icon: LucideIcons.wifiOff,
+                      title: 'Gagal Memuat Materi',
+                      subtitle: _error!,
+                      actionLabel: 'Coba Lagi',
+                      onAction: _performSearch,
+                    )
+                  : _results.isEmpty
+                  ? EmptyState(
+                      useLottie: true,
                       icon: LucideIcons.searchX,
                       title: 'Materi Tidak Ditemukan',
-                      subtitle: 'Coba ganti kata kunci atau reset filter mata kuliah di atas',
+                      subtitle:
+                          'Coba ganti kata kunci atau reset filter mata kuliah di atas',
                       actionLabel: 'Reset Pencarian',
                       onAction: () {
                         setState(() {
@@ -241,17 +262,26 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                       },
                     )
                   : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, TaklukSpacing.bottomSafe),
+                      padding: const EdgeInsets.fromLTRB(
+                        20,
+                        0,
+                        20,
+                        TaklukSpacing.bottomSafe,
+                      ),
                       itemCount: _results.length,
                       itemBuilder: (context, index) {
                         final video = _results[index];
-                        final isBookmarked = bookmarks.any((w) => w.videoId == video.id);
+                        final isBookmarked = bookmarks.any(
+                          (w) => w.videoId == video.id,
+                        );
                         return VideoRowCard(
                           title: video.title,
-                          subtitle: '${video.courseName} • ${video.category.label}',
+                          subtitle:
+                              '${video.courseName} • ${video.category.label}',
                           duration: video.formattedDuration,
                           symbol: video.courseSymbol ?? '',
-                          isLocked: !video.isFree && !(user?.isSubscribed ?? false),
+                          isLocked:
+                              !video.isFree && !(user?.isSubscribed ?? false),
                           isFree: video.isFree,
                           isBookmarked: isBookmarked,
                           onTap: () {
@@ -273,4 +303,3 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     );
   }
 }
-

@@ -19,10 +19,6 @@ class AppConstants {
   static const int otpExpiryMinutes = 5;
   static const int otpMaxAttempts = 5;
 
-  // Akun demo (seed backend)
-  static const String demoEmail = 'aisyah@takluk.dev';
-  static const String demoOtp = '123456';
-
   // Layout
   static const double bottomBarHeight = 112;
   static const double touchTarget = 44;
@@ -36,4 +32,3 @@ class StorageKeys {
   static const String deviceId = 'device_id';
   static const String userJson = 'user_json';
 }
-

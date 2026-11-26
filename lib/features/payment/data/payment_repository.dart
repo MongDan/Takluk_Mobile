@@ -42,27 +42,4 @@ class PaymentRepository {
     final data = await _api.get(ApiEndpoints.paymentStatus(invoiceNumber));
     return PaymentStatusModel.fromJson(asJsonMap(data));
   }
-
-  /// Simulasi pelunasan untuk mode development.
-  ///
-  /// Memanggil webhook Midtrans dengan `signature_key = mock_signature_test`
-  /// yang hanya diterima backend saat `NODE_ENV=development`.
-  Future<void> simulatePaymentSuccess({
-    required String invoiceNumber,
-    required int grossAmount,
-  }) async {
-    await _api.post(
-      ApiEndpoints.paymentsWebhook,
-      data: {
-        'order_id': invoiceNumber,
-        'status_code': '200',
-        'gross_amount': grossAmount.toString(),
-        'signature_key': 'mock_signature_test',
-        'transaction_status': 'settlement',
-        'fraud_status': 'accept',
-      },
-    );
-  }
 }
-
-

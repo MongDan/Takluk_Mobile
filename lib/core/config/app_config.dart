@@ -12,9 +12,10 @@ import 'package:flutter/foundation.dart';
 class AppConfig {
   AppConfig._();
 
-  /// URL utama backend. Ganti nilai ini setelah backend di-deploy online,
-  /// atau gunakan `--dart-define=API_BASE_URL=https://domain-backend`.
-  static const String defaultBaseUrl = 'http://localhost:3000';
+  /// URL utama backend (production). Untuk pengembangan lokal, ganti ke
+  /// `http://localhost:3000` atau pakai `--dart-define=API_BASE_URL=...`.
+  static const String defaultBaseUrl =
+      'https://taklukbe-production.up.railway.app';
 
   /// Override dari `--dart-define=API_BASE_URL=...` (prioritas tertinggi).
   static const String _envBaseUrl = String.fromEnvironment('API_BASE_URL');
@@ -30,11 +31,21 @@ class AppConfig {
       return _normalize(_envBaseUrl);
     }
     // Emulator Android tidak bisa mengakses `localhost` komputer host,
-    // gunakan 10.0.2.2. Untuk perangkat fisik gunakan --dart-define.
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    // jadi otomatis memakai 10.0.2.2 — TETAPI hanya selama URL default masih
+    // backend lokal. Setelah backend online (URL bukan localhost/127.0.0.1),
+    // URL default langsung dipakai di semua platform tanpa pengecualian.
+    if (!kIsWeb &&
+        defaultTargetPlatform == TargetPlatform.android &&
+        _isLocalHost(defaultBaseUrl)) {
       return 'http://10.0.2.2:3000';
     }
     return _normalize(defaultBaseUrl);
+  }
+
+  /// Deteksi apakah URL menunjuk ke backend lokal (host ini).
+  static bool _isLocalHost(String url) {
+    final host = Uri.tryParse(url)?.host ?? '';
+    return host == 'localhost' || host == '127.0.0.1';
   }
 
   /// Mengubah base URL saat aplikasi berjalan (mis. dari halaman pengaturan).
@@ -71,9 +82,8 @@ class AppConfig {
   static const int otpExpiryMinutes = 5;
   static const int otpMaxAttempts = 5;
 
-  // Akun demo (seed backend: aisyah@takluk.dev, OTP 123456 di mode development)
-  static const String demoEmail = 'aisyah@takluk.dev';
-  static const String demoOtp = '123456';
+  // Akun demo tidak lagi disediakan di UI; semua akun adalah akun real
+  // yang terdaftar via OTP email.
 
   // Jadwal ujian untuk widget hitung mundur (konfigurasi produk, bukan data API).
   static DateTime get nextExamDate {

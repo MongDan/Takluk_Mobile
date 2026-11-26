@@ -62,9 +62,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final tx = await ref.read(paymentRepositoryProvider).createQris(
-            voucherCode: _appliedVoucher?.code,
-          );
+      final tx = await ref
+          .read(paymentRepositoryProvider)
+          .createQris(voucherCode: _appliedVoucher?.code);
 
       ref.read(currentTransactionProvider.notifier).state = tx;
       ref.invalidate(transactionHistoryProvider);
@@ -137,7 +137,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: TaklukColors.accent,
                           borderRadius: BorderRadius.circular(50),
@@ -208,7 +211,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     decoration: InputDecoration(
                       hintText: 'Contoh: PANAM10',
                       errorText: _voucherError,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                     ),
                   ),
                 ),
@@ -264,12 +270,26 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             ),
             const SizedBox(height: 10),
 
-            // Promo Voucher Suggestions
-            Wrap(
-              spacing: 8,
+            Row(
               children: [
-                _promoChip('PANAM10', 'Diskon Rp10.000'),
-                _promoChip('UINSUSKA', 'Diskon Rp5.000'),
+                const Icon(
+                  LucideIcons.info,
+                  size: 13,
+                  color: TaklukColors.muted,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Kode voucher divalidasi otomatis oleh sistem saat '
+                    'tagihan dibuat. Diskon ditentukan server, bukan aplikasi.',
+                    style: TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 11,
+                      color: TaklukColors.muted.withOpacity(0.9),
+                      height: 1.4,
+                    ),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 24),
@@ -336,7 +356,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: const [
-                  Icon(LucideIcons.shieldCheck, size: 14, color: TaklukColors.success),
+                  Icon(
+                    LucideIcons.shieldCheck,
+                    size: 14,
+                    color: TaklukColors.success,
+                  ),
                   SizedBox(width: 6),
                   Text(
                     'Didukung semua e-Wallet & M-Banking (QRIS)',
@@ -375,39 +399,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     );
   }
 
-  Widget _promoChip(String code, String benefit) {
-    final isSelected = _appliedVoucher?.code == code;
-    return GestureDetector(
-      onTap: () => _applyVoucher(code),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected ? TaklukColors.tintWarm : TaklukColors.tint,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSelected ? TaklukColors.accent : TaklukColors.line,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(LucideIcons.tag, size: 12, color: TaklukColors.primary),
-            const SizedBox(width: 6),
-            Text(
-              '$code • $benefit',
-              style: TextStyle(
-                fontFamily: 'Poppins',
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: isSelected ? TaklukColors.accent : TaklukColors.primary,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _priceRow(String label, String value, {bool isDiscount = false}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -433,4 +424,3 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     );
   }
 }
-

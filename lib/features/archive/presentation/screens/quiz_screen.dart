@@ -72,14 +72,14 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
     });
 
     try {
-      final evaluation = await ref.read(archiveRepositoryProvider).evaluate(
-            questionId: _questions[_currentIndex].id,
-            selectedKey: key,
-          );
+      final evaluation = await ref
+          .read(archiveRepositoryProvider)
+          .evaluate(questionId: _questions[_currentIndex].id, selectedKey: key);
       if (!mounted) return;
       setState(() {
-        _questions[_currentIndex] =
-            _questions[_currentIndex].withEvaluation(evaluation);
+        _questions[_currentIndex] = _questions[_currentIndex].withEvaluation(
+          evaluation,
+        );
         if (evaluation.isCorrect) _score++;
         _isAnswered = true;
         _isEvaluating = false;
@@ -128,6 +128,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
         backgroundColor: TaklukColors.bg,
         appBar: const PushPageHeader(title: 'Latihan Soal'),
         body: EmptyState(
+          useLottie: _error == null,
           icon: LucideIcons.fileQuestion,
           title: _error != null ? 'Gagal Memuat Soal' : 'Belum Ada Soal',
           subtitle: _error ?? 'Bank soal untuk mata kuliah ini belum tersedia.',
@@ -155,8 +156,11 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                     shape: BoxShape.circle,
                   ),
                   child: const Center(
-                    child: Icon(LucideIcons.partyPopper,
-                        size: 44, color: TaklukColors.accent),
+                    child: Icon(
+                      LucideIcons.partyPopper,
+                      size: 44,
+                      color: TaklukColors.accent,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -221,7 +225,10 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: TaklukColors.tint,
                     borderRadius: BorderRadius.circular(6),
@@ -297,7 +304,10 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                   decoration: BoxDecoration(
                     color: bgColor,
                     borderRadius: TaklukRadius.cardBR,
-                    border: Border.all(color: borderColor, width: isChosen || (_isAnswered && isCorrect) ? 2 : 1),
+                    border: Border.all(
+                      color: borderColor,
+                      width: isChosen || (_isAnswered && isCorrect) ? 2 : 1,
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -315,7 +325,9 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                               fontFamily: 'Poppins',
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
-                              color: isChosen ? Colors.white : TaklukColors.primary,
+                              color: isChosen
+                                  ? Colors.white
+                                  : TaklukColors.primary,
                             ),
                           ),
                         ),
@@ -334,9 +346,17 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                       ),
                       if (_isAnswered) ...[
                         if (isCorrect)
-                          const Icon(LucideIcons.checkCircle, color: TaklukColors.success, size: 20)
+                          const Icon(
+                            LucideIcons.checkCircle,
+                            color: TaklukColors.success,
+                            size: 20,
+                          )
                         else if (isChosen)
-                          const Icon(LucideIcons.xCircle, color: TaklukColors.error, size: 20),
+                          const Icon(
+                            LucideIcons.xCircle,
+                            color: TaklukColors.error,
+                            size: 20,
+                          ),
                       ],
                     ],
                   ),
@@ -353,7 +373,9 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                   color: TaklukColors.surface,
                   borderRadius: TaklukRadius.cardBR,
                   border: Border.all(
-                    color: _selectedKey == q.correctKey ? TaklukColors.success : TaklukColors.line,
+                    color: _selectedKey == q.correctKey
+                        ? TaklukColors.success
+                        : TaklukColors.line,
                   ),
                 ),
                 child: Column(
@@ -362,18 +384,26 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                     Row(
                       children: [
                         Icon(
-                          _selectedKey == q.correctKey ? LucideIcons.checkCircle : LucideIcons.helpCircle,
-                          color: _selectedKey == q.correctKey ? TaklukColors.success : TaklukColors.accent,
+                          _selectedKey == q.correctKey
+                              ? LucideIcons.checkCircle
+                              : LucideIcons.helpCircle,
+                          color: _selectedKey == q.correctKey
+                              ? TaklukColors.success
+                              : TaklukColors.accent,
                           size: 20,
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          _selectedKey == q.correctKey ? 'Jawaban Kamu Benar!' : 'Pembahasan Langkah Demi Langkah',
+                          _selectedKey == q.correctKey
+                              ? 'Jawaban Kamu Benar!'
+                              : 'Pembahasan Langkah Demi Langkah',
                           style: TextStyle(
                             fontFamily: 'Poppins',
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
-                            color: _selectedKey == q.correctKey ? TaklukColors.success : TaklukColors.ink,
+                            color: _selectedKey == q.correctKey
+                                ? TaklukColors.success
+                                : TaklukColors.ink,
                           ),
                         ),
                       ],
@@ -397,7 +427,10 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                           context.push('/player/${q.relatedVideoId}');
                         },
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
                           decoration: BoxDecoration(
                             color: TaklukColors.tintWarm,
                             borderRadius: BorderRadius.circular(8),
@@ -405,7 +438,11 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(LucideIcons.playCircle, color: TaklukColors.accent, size: 16),
+                              Icon(
+                                LucideIcons.playCircle,
+                                color: TaklukColors.accent,
+                                size: 16,
+                              ),
                               SizedBox(width: 8),
                               Text(
                                 'Tonton Video Pembahasan Soal Ini →',
@@ -426,7 +463,9 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
               ),
               const SizedBox(height: 20),
               TaklukButton(
-                label: _currentIndex < _questions.length - 1 ? 'Soal Berikutnya →' : 'Selesai Latihan',
+                label: _currentIndex < _questions.length - 1
+                    ? 'Soal Berikutnya →'
+                    : 'Selesai Latihan',
                 onPressed: _isEvaluating ? null : _nextQuestion,
               ),
             ],
@@ -436,4 +475,3 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
     );
   }
 }
-

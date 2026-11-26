@@ -29,12 +29,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   void _startCountdown() {
     _updateCountdown();
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) => _updateCountdown());
+    _countdownTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _updateCountdown(),
+    );
   }
 
   void _updateCountdown() {
     final diff = AppConfig.nextExamDate.difference(DateTime.now());
-    if (mounted) setState(() => _countdown = diff.isNegative ? Duration.zero : diff);
+    if (mounted) {
+      setState(() => _countdown = diff.isNegative ? Duration.zero : diff);
+    }
   }
 
   @override
@@ -107,7 +112,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         ),
                         child: Center(
                           child: Text(
-                            user?.fullName.isNotEmpty == true ? user!.fullName[0].toUpperCase() : 'A',
+                            user?.fullName.isNotEmpty == true
+                                ? user!.fullName[0].toUpperCase()
+                                : 'A',
                             style: const TextStyle(
                               fontFamily: 'Poppins',
                               fontSize: 18,
@@ -127,7 +134,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: GestureDetector(
                   onTap: () => context.go('/explore'),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                     decoration: BoxDecoration(
                       color: TaklukColors.surface,
                       borderRadius: TaklukRadius.cardBR,
@@ -142,7 +152,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(LucideIcons.search, size: 18, color: TaklukColors.muted),
+                        const Icon(
+                          LucideIcons.search,
+                          size: 18,
+                          color: TaklukColors.muted,
+                        ),
                         const SizedBox(width: 12),
                         Text(
                           'Cari materi Kalkulus, Statistika, UTS…',
@@ -174,21 +188,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               if (continueWatching.valueOrNull?.isNotEmpty ?? false) ...[
                 _sectionHeader('Lanjut Menonton', icon: LucideIcons.playCircle),
                 const SizedBox(height: 10),
-                ...continueWatching.value!.map((wh) => Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: VideoRowCard(
-                    title: wh.videoTitle ?? 'Video Materi',
-                    subtitle: wh.courseName ?? '',
-                    duration: _formatDuration(wh.videoDurationSeconds ?? 0),
-                    symbol: wh.courseSymbol ?? '∫',
-                    progress: wh.progress,
-                    onTap: () => context.push('/player/${wh.videoId}'),
+                ...continueWatching.value!.map(
+                  (wh) => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: VideoRowCard(
+                      title: wh.videoTitle ?? 'Video Materi',
+                      subtitle: wh.courseName ?? '',
+                      duration: _formatDuration(wh.videoDurationSeconds ?? 0),
+                      symbol: wh.courseSymbol ?? '∫',
+                      progress: wh.progress,
+                      onTap: () => context.push('/player/${wh.videoId}'),
+                    ),
                   ),
-                )),
+                ),
                 const SizedBox(height: 20),
               ],
 
-              _sectionHeader('Katalog Mata Kuliah Momok', icon: LucideIcons.bookOpen),
+              _sectionHeader(
+                'Katalog Mata Kuliah Momok',
+                icon: LucideIcons.bookOpen,
+              ),
               const SizedBox(height: 12),
               courses.when(
                 data: (list) => SizedBox(
@@ -204,35 +223,49 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                   ),
                 ),
-                loading: () => const SizedBox(height: 120, child: Center(child: CircularProgressIndicator())),
+                loading: () => const SizedBox(
+                  height: 120,
+                  child: Center(child: CircularProgressIndicator()),
+                ),
                 error: (e, _) => const SizedBox.shrink(),
               ),
               const SizedBox(height: 24),
 
-              _sectionHeader('Rekomendasi Bedah Soal Populer', icon: LucideIcons.flame),
+              _sectionHeader(
+                'Rekomendasi Bedah Soal Populer',
+                icon: LucideIcons.flame,
+              ),
               const SizedBox(height: 10),
               popularVideos.when(
                 data: (list) => Column(
-                  children: list.map((v) => Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: VideoRowCard(
-                      title: v.title,
-                      subtitle: '${v.courseName} • ${v.category.label}',
-                      duration: v.formattedDuration,
-                      symbol: v.courseSymbol ?? '',
-                      isLocked: !v.isFree && !(user?.isSubscribed ?? false),
-                      isFree: v.isFree,
-                      onTap: () {
-                        if (v.isFree || (user?.isSubscribed ?? false)) {
-                          context.push('/player/${v.id}');
-                        } else {
-                          context.push('/checkout');
-                        }
-                      },
-                    ),
-                  )).toList(),
+                  children: list
+                      .map(
+                        (v) => Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: VideoRowCard(
+                            title: v.title,
+                            subtitle: '${v.courseName} • ${v.category.label}',
+                            duration: v.formattedDuration,
+                            symbol: v.courseSymbol ?? '',
+                            isLocked:
+                                !v.isFree && !(user?.isSubscribed ?? false),
+                            isFree: v.isFree,
+                            onTap: () {
+                              if (v.isFree || (user?.isSubscribed ?? false)) {
+                                context.push('/player/${v.id}');
+                              } else {
+                                context.push('/checkout');
+                              }
+                            },
+                          ),
+                        ),
+                      )
+                      .toList(),
                 ),
-                loading: () => const SizedBox(height: 80, child: Center(child: CircularProgressIndicator())),
+                loading: () => const SizedBox(
+                  height: 80,
+                  child: Center(child: CircularProgressIndicator()),
+                ),
                 error: (e, _) => const SizedBox.shrink(),
               ),
               const SizedBox(height: 20),
@@ -243,7 +276,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
               const SizedBox(height: 24),
 
-              _sectionHeader('Layanan Offline Panam Academy Hub', icon: LucideIcons.store),
+              _sectionHeader(
+                'Layanan Offline Panam Academy Hub',
+                icon: LucideIcons.store,
+              ),
               const SizedBox(height: 12),
               hubServices.when(
                 data: (catalog) => SizedBox(
@@ -315,7 +351,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: isSubscribed ? TaklukColors.accent : Colors.white24,
                     borderRadius: BorderRadius.circular(50),
@@ -380,7 +419,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             if (!isSubscribed) ...[
               const SizedBox(height: 14),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: TaklukColors.accent,
                   borderRadius: BorderRadius.circular(50),
@@ -420,6 +462,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final days = _countdown.inDays;
     final hours = _countdown.inHours % 24;
     final minutes = _countdown.inMinutes % 60;
+    final seconds = _countdown.inSeconds % 60;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -436,7 +479,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               color: TaklukColors.accent.withOpacity(0.15),
               shape: BoxShape.circle,
             ),
-            child: const Icon(LucideIcons.clock, color: TaklukColors.accent, size: 24),
+            child: const Icon(
+              LucideIcons.clock,
+              color: TaklukColors.accent,
+              size: 24,
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -463,6 +510,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
                 const SizedBox(height: 8),
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     _CountdownBox(value: days.toString(), label: 'Hari'),
                     const SizedBox(width: 8),
@@ -474,6 +522,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     _CountdownBox(
                       value: minutes.toString().padLeft(2, '0'),
                       label: 'Menit',
+                    ),
+                    const SizedBox(width: 8),
+                    _CountdownBox(
+                      value: seconds.toString().padLeft(2, '0'),
+                      label: 'Detik',
                     ),
                   ],
                 ),
@@ -509,7 +562,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               color: TaklukColors.tint,
               shape: BoxShape.circle,
             ),
-            child: const Icon(LucideIcons.gift, color: TaklukColors.primary, size: 22),
+            child: const Icon(
+              LucideIcons.gift,
+              color: TaklukColors.primary,
+              size: 22,
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -577,9 +634,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   String _formatRupiah(int value) {
     return value.toString().replaceAllMapped(
-          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-          (match) => '${match[1]}.',
-        );
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (match) => '${match[1]}.',
+    );
   }
 
   Widget _sectionHeader(String title, {IconData? icon}) {
@@ -640,7 +697,11 @@ class _CountdownBox extends StatelessWidget {
         const SizedBox(height: 2),
         Text(
           label,
-          style: const TextStyle(fontFamily: 'Poppins', fontSize: 10, color: TaklukColors.muted),
+          style: const TextStyle(
+            fontFamily: 'Poppins',
+            fontSize: 10,
+            color: TaklukColors.muted,
+          ),
         ),
       ],
     );
@@ -656,13 +717,17 @@ class _CourseCard extends StatefulWidget {
   State<_CourseCard> createState() => _CourseCardState();
 }
 
-class _CourseCardState extends State<_CourseCard> with SingleTickerProviderStateMixin {
+class _CourseCardState extends State<_CourseCard>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 100));
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 100),
+    );
   }
 
   @override
@@ -770,13 +835,17 @@ class _HubInfoCard extends StatefulWidget {
   State<_HubInfoCard> createState() => _HubInfoCardState();
 }
 
-class _HubInfoCardState extends State<_HubInfoCard> with SingleTickerProviderStateMixin {
+class _HubInfoCardState extends State<_HubInfoCard>
+    with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 100));
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 100),
+    );
   }
 
   @override
@@ -868,4 +937,3 @@ class _HubInfoCardState extends State<_HubInfoCard> with SingleTickerProviderSta
     );
   }
 }
-

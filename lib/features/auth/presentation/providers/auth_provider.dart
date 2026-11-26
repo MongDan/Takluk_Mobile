@@ -43,7 +43,6 @@ class AuthState {
   }
 }
 
-
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
   return AuthNotifier(
     ref.watch(authRepositoryProvider),
@@ -58,7 +57,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   final DeviceInfoService _deviceInfo;
 
   AuthNotifier(this._repository, this._storage, this._deviceInfo)
-      : super(const AuthState());
+    : super(const AuthState());
 
   /// Memulihkan sesi dari token JWT yang tersimpan, lalu menyegarkan profil
   /// dari `GET /api/profile/me`.
@@ -105,10 +104,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
     try {
       await _repository.requestOtp(email);
-      state = state.copyWith(
-        status: AuthStatus.unauthenticated,
-        otpSent: true,
-      );
+      state = state.copyWith(status: AuthStatus.unauthenticated, otpSent: true);
       return true;
     } on ApiException catch (error) {
       state = state.copyWith(
@@ -161,10 +157,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       state = AuthState(status: AuthStatus.authenticated, user: user);
       return true;
     } on ApiException catch (error) {
-      state = state.copyWith(
-        otpVerifying: false,
-        errorMessage: error.message,
-      );
+      state = state.copyWith(otpVerifying: false, errorMessage: error.message);
       return false;
     } catch (_) {
       state = state.copyWith(
@@ -173,16 +166,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
       );
       return false;
     }
-  }
-
-
-  /// Masuk cepat memakai akun demo yang di-seed backend:
-  /// `aisyah@takluk.dev` + OTP `123456` (mode development).
-  Future<bool> loginAsDemo() {
-    return verifyOtp(
-      email: AppConstants.demoEmail,
-      otpCode: AppConstants.demoOtp,
-    );
   }
 
   /// Menyegarkan profil dari server (mis. setelah pembayaran sukses).
@@ -229,5 +212,3 @@ class AuthNotifier extends StateNotifier<AuthState> {
     await _storage.delete(key: StorageKeys.userJson);
   }
 }
-
-

@@ -11,12 +11,13 @@ final secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
 
 /// Dio client tunggal untuk seluruh aplikasi.
 ///
-/// `baseUrl` diambil dari [AppConfig.apiBaseUrl] sehingga pergantian alamat
-/// backend cukup dilakukan di satu tempat.
+/// `baseUrl` dibaca ulang dari [AppConfig.apiBaseUrl] pada setiap request
+/// (lewat [BaseUrlInterceptor]), jadi pergantian alamat backend cukup diatur
+/// di satu tempat dan langsung berlaku tanpa restart. Untuk perangkat fisik,
+/// gunakan `--dart-define=API_BASE_URL=http://<IP>:3000`.
 final dioClientProvider = Provider<Dio>((ref) {
   final dio = Dio(
     BaseOptions(
-      baseUrl: AppConfig.apiBaseUrl,
       connectTimeout: AppConfig.apiTimeout,
       receiveTimeout: AppConfig.apiTimeout,
       sendTimeout: AppConfig.apiTimeout,
@@ -27,9 +28,14 @@ final dioClientProvider = Provider<Dio>((ref) {
     ),
   );
 
+  // Base URL dibaca ulang di SETIAP request dari AppConfig, sehingga
+  // pergantian alamat backend langsung berlaku tanpa restart aplikasi.
+  dio.interceptors.add(BaseUrlInterceptor());
+
   dio.interceptors.add(AuthInterceptor(ref));
 
   if (kDebugMode) {
+    debugPrint('⇢ API Base URL: ${AppConfig.apiBaseUrl}');
     dio.interceptors.add(
       LogInterceptor(
         requestBody: true,
@@ -41,6 +47,18 @@ final dioClientProvider = Provider<Dio>((ref) {
 
   return dio;
 });
+
+/// Menempelkan `baseUrl` terbaru dari [AppConfig.apiBaseUrl] ke setiap request.
+class BaseUrlInterceptor extends Interceptor {
+  @override
+  void onRequest(
+    RequestOptions options,
+    RequestInterceptorHandler handler,
+  ) {
+    options.baseUrl = AppConfig.apiBaseUrl;
+    handler.next(options);
+  }
+}
 
 /// Menyisipkan `Authorization: Bearer <JWT>` dan `X-Device-ID` pada setiap
 /// request yang membutuhkannya (Single Device Binding).

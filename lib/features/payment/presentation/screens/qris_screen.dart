@@ -51,7 +51,8 @@ class _QrisScreenState extends ConsumerState<QrisScreen> {
           invoiceNumber: status.invoiceNumber,
           finalAmount: status.finalAmount,
           paymentStatus: status.paymentStatus,
-          expiresAt: status.expiresAt ??
+          expiresAt:
+              status.expiresAt ??
               DateTime.now().add(const Duration(minutes: 15)),
           createdAt: DateTime.now(),
         );
@@ -81,7 +82,10 @@ class _QrisScreenState extends ConsumerState<QrisScreen> {
     });
 
     // Polling ringan status invoice ke backend (mis. webhook Midtrans masuk).
-    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _pollStatus());
+    _pollTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _pollStatus(),
+    );
   }
 
   Future<void> _pollStatus() async {
@@ -89,8 +93,9 @@ class _QrisScreenState extends ConsumerState<QrisScreen> {
     if (tx == null || _isProcessing) return;
 
     try {
-      final status =
-          await ref.read(paymentRepositoryProvider).checkStatus(tx.invoiceNumber);
+      final status = await ref
+          .read(paymentRepositoryProvider)
+          .checkStatus(tx.invoiceNumber);
       if (!mounted) return;
 
       if (status.isPaid) {
@@ -107,7 +112,7 @@ class _QrisScreenState extends ConsumerState<QrisScreen> {
     }
   }
 
-  Future<void> _handlePaymentSuccess() async {
+  Future<void> _handleCheckStatus() async {
     final tx = _transaction;
     if (tx == null) {
       TaklukToast.show(context, 'Transaksi tidak ditemukan', isError: true);
@@ -118,10 +123,6 @@ class _QrisScreenState extends ConsumerState<QrisScreen> {
 
     try {
       final repo = ref.read(paymentRepositoryProvider);
-      await repo.simulatePaymentSuccess(
-        invoiceNumber: tx.invoiceNumber,
-        grossAmount: tx.finalAmount,
-      );
       final status = await repo.checkStatus(tx.invoiceNumber);
 
       if (!mounted) return;
@@ -137,11 +138,20 @@ class _QrisScreenState extends ConsumerState<QrisScreen> {
       }
 
       setState(() => _isProcessing = false);
-      TaklukToast.show(
-        context,
-        'Pembayaran belum tercatat. Coba cek status lagi sebentar.',
-        isError: true,
-      );
+      if (status.paymentStatus == PaymentStatus.EXPIRED) {
+        setState(() => _timeLeft = Duration.zero);
+        TaklukToast.show(
+          context,
+          'Batas waktu pembayaran telah habis.',
+          isError: true,
+        );
+      } else {
+        TaklukToast.show(
+          context,
+          'Pembayaran belum tercatat. Jika sudah bayar, tunggu sebentar lalu cek lagi.',
+          isError: true,
+        );
+      }
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _isProcessing = false);
@@ -149,7 +159,11 @@ class _QrisScreenState extends ConsumerState<QrisScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _isProcessing = false);
-      TaklukToast.show(context, 'Gagal memverifikasi transaksi', isError: true);
+      TaklukToast.show(
+        context,
+        'Gagal mengecek status pembayaran',
+        isError: true,
+      );
     }
   }
 
@@ -184,10 +198,14 @@ class _QrisScreenState extends ConsumerState<QrisScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: isExpired ? TaklukColors.error.withOpacity(0.1) : TaklukColors.tintWarm,
+                color: isExpired
+                    ? TaklukColors.error.withOpacity(0.1)
+                    : TaklukColors.tintWarm,
                 borderRadius: BorderRadius.circular(50),
                 border: Border.all(
-                  color: isExpired ? TaklukColors.error : TaklukColors.accent.withOpacity(0.4),
+                  color: isExpired
+                      ? TaklukColors.error
+                      : TaklukColors.accent.withOpacity(0.4),
                 ),
               ),
               child: Row(
@@ -236,7 +254,10 @@ class _QrisScreenState extends ConsumerState<QrisScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: TaklukColors.tint,
                           borderRadius: BorderRadius.circular(6),
@@ -276,7 +297,10 @@ class _QrisScreenState extends ConsumerState<QrisScreen> {
                       child: const Center(
                         child: Text(
                           'QR Code Kedaluwarsa',
-                          style: TextStyle(fontFamily: 'Poppins', color: TaklukColors.muted),
+                          style: TextStyle(
+                            fontFamily: 'Poppins',
+                            color: TaklukColors.muted,
+                          ),
                         ),
                       ),
                     ),
@@ -325,22 +349,28 @@ class _QrisScreenState extends ConsumerState<QrisScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  _stepRow('1', 'Buka aplikasi e-Wallet (GoPay, OVO, DANA) atau M-Banking kamu'),
+                  _stepRow(
+                    '1',
+                    'Buka aplikasi e-Wallet (GoPay, OVO, DANA) atau M-Banking kamu',
+                  ),
                   _stepRow('2', 'Pilih menu Scan / Bayar QRIS'),
                   _stepRow('3', 'Arahkan kamera ke kode QR di atas'),
-                  _stepRow('4', 'Pastikan nama penerima "TAKLUK EDTECH" dan nominal sesuai'),
+                  _stepRow(
+                    '4',
+                    'Pastikan nama penerima "TAKLUK EDTECH" dan nominal sesuai',
+                  ),
                   _stepRow('5', 'Konfirmasi & selesaikan pembayaran'),
                 ],
               ),
             ),
             const SizedBox(height: 24),
 
-            // Simulation Button (for Demo & Testing)
+            // Cek status pembayaran (polling manual)
             TaklukButton(
-              label: 'Simulasi Bayar Lunas (Webhook)',
-              icon: LucideIcons.checkCircle2,
+              label: 'Cek Status Pembayaran',
+              icon: LucideIcons.refreshCw,
               isLoading: _isProcessing,
-              onPressed: isExpired || _isProcessing ? null : _handlePaymentSuccess,
+              onPressed: isExpired || _isProcessing ? null : _handleCheckStatus,
             ),
           ],
         ),
@@ -390,4 +420,3 @@ class _QrisScreenState extends ConsumerState<QrisScreen> {
     );
   }
 }
-

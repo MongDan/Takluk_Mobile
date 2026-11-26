@@ -82,6 +82,7 @@ class _BookmarkScreenState extends ConsumerState<BookmarkScreen> {
                 data: (bookmarks) {
                   if (bookmarks.isEmpty) {
                     return EmptyState(
+                      useLottie: true,
                       icon: LucideIcons.bookmark,
                       title: 'Belum Ada Video Tersimpan',
                       subtitle:
@@ -140,5 +141,3 @@ class _BookmarkScreenState extends ConsumerState<BookmarkScreen> {
     return '${min.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
   }
 }
-
-

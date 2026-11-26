@@ -16,29 +16,42 @@ Semua endpoint di `lib/core/network/api_endpoints.dart` bersifat relatif
 terhadap base URL tersebut, jadi tidak ada endpoint yang perlu diganti satu per
 satu.
 
+### Default saat ini (production)
+
+```dart
+static const String defaultBaseUrl = 'https://taklukbe-production.up.railway.app';
+```
+
+Aplikasi langsung memakai URL production di **semua platform** (termasuk emulator
+Android). Fallback `10.0.2.2:3000` **hanya aktif** selama `defaultBaseUrl` masih
+menunjuk ke `localhost`/`127.0.0.1`.
+
 ### Mode development (backend lokal)
 
-| Target | Base URL otomatis |
-| --- | --- |
-| Android Emulator | `http://10.0.2.2:3000` |
-| iOS Simulator / Desktop / Web | `http://localhost:3000` |
-
-Untuk perangkat Android fisik, gunakan IP LAN komputer, misalnya:
+Ubah `defaultBaseUrl` menjadi `http://localhost:3000`, atau lebih aman tanpa
+mengubah kode:
 
 ```bash
+# Android emulator
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:3000
+
+# Desktop / Web / iOS Simulator
+flutter run --dart-define=API_BASE_URL=http://localhost:3000
+
+# Perangkat Android fisik (pakai IP LAN komputer)
 flutter run --dart-define=API_BASE_URL=http://192.168.1.10:3000
 ```
 
-### Setelah backend di-deploy online
+### Mengganti URL backend (deploy baru / ganti domain)
 
-Cukup jalankan aplikasi dengan:
+Cukup jalankan:
 
 ```bash
-flutter run --dart-define=API_BASE_URL=https://api.takluk.id
+flutter run --dart-define=API_BASE_URL=https://domain-baru.example
 ```
 
-Atau ubah nilai `defaultBaseUrl` di `lib/core/config/app_config.dart`
-menjadi URL production. Tidak ada perubahan kode lain yang diperlukan.
+atau ubah satu baris `defaultBaseUrl`. Tidak ada perubahan kode lain yang
+diperlukan.
 
 ## 2. Menjalankan Aplikasi
 
@@ -47,19 +60,17 @@ flutter pub get
 flutter run
 ```
 
-Backend default berjalan di `http://localhost:3000`
-(Swagger: `http://localhost:3000/docs`).
+Swagger API: `https://taklukbe-production.up.railway.app/docs`.
 
-## 3. Akun Demo
+## 3. Akun & OTP
 
-Seed backend menyediakan akun:
-
-- Email: `aisyah@takluk.dev`
-- OTP development: `123456`
-
-Tombol **Masuk dengan Akun Demo** di halaman auth memakai akun tersebut.
-`X-Device-ID` dibuat otomatis dari perangkat dan dikirim pada setiap request
-(Single Device Binding).
+- **Development**: seed backend memakai OTP `123456` (termasuk akun
+  `aisyah@takluk.dev`).
+- **Production (Railway)**: OTP asli 6 digit dikirim via email — tombol
+  **Masuk dengan Akun Demo** tidak berlaku di production, silakan daftar dengan
+  email yang bisa menerima OTP (pastikan `RESEND_API_KEY` terpasang di Railway).
+- `X-Device-ID` dibuat otomatis dari perangkat dan dikirim pada setiap request
+  (Single Device Binding).
 
 ## 4. Endpoint yang Terhubung
 
